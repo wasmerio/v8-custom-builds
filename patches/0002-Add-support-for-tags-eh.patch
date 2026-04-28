@@ -200,16 +200,7 @@ index 8650fb3549b..15fceadff2e 100644
  // Table Instances
  
  template <>
-@@ -2305,7 +2425,7 @@ WASM_EXPORT auto Memory::type() const -> own<MemoryType> {
-                                        i::wasm::kWasmPageSize);
-   uint32_t max =
-       memory->has_maximum_pages() ? memory->maximum_pages() : 0xFFFFFFFFu;
--  return MemoryType::make(Limits(min, max));
-+  return MemoryType::make(Limits(min, max, false));
- }
- 
- WASM_EXPORT auto Memory::data() const -> byte_t* {
-@@ -2471,6 +2591,10 @@ WASM_EXPORT auto Instance::exports() const -> ownvec<Extern> {
+@@ -2470,6 +2592,10 @@ WASM_EXPORT auto Instance::exports() const -> ownvec<Extern> {
          exports[i] = implement<Memory>::type::make(
              store, i::Cast<i::WasmMemoryObject>(obj));
        } break;
@@ -220,16 +211,7 @@ index 8650fb3549b..15fceadff2e 100644
      }
    }
  
-@@ -2724,7 +2848,7 @@ extern "C++" inline auto hide_limits(const wasm::Limits& limits)
- }
- 
- extern "C++" inline auto reveal_limits(wasm_limits_t limits) -> wasm::Limits {
--  return wasm::Limits(limits.min, limits.max);
-+  return wasm::Limits(limits.min, limits.max, limits.shared);
- }
- 
- extern "C++" inline auto hide_valkind(wasm::ValKind kind) -> wasm_valkind_t {
-@@ -2804,6 +2928,17 @@ wasm_mutability_t wasm_globaltype_mutability(const wasm_globaltype_t* gt) {
+@@ -2803,6 +2929,17 @@ wasm_mutability_t wasm_globaltype_mutability(const wasm_globaltype_t* gt) {
    return hide_mutability(gt->mutability());
  }
  
