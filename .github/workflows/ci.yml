@@ -26,7 +26,7 @@ jobs:
             os: 'macos-15'
             native: true
           - id: 'ios'
-            os: 'darwin-aarch64'
+            os: 'macos-15'
             native: false
           - id: 'android'
             os: 'ubuntu-22.04'
@@ -47,7 +47,7 @@ jobs:
     container: ${{ matrix.target.container }}
     steps:
       - name: Check out the code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install dependencies on Ubuntu
         if: startsWith(matrix.target.id, 'linux-amd64')
@@ -134,13 +134,17 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          tar --directory v8/out/dist --create --xz --verbose ${{ matrix.target.tar_extra_args }} --file dist/v8.tar.xz include lib
+          tar --directory v8/out/dist --create --xz --verbose ${{ matrix.target.tar_extra_args }} --file dist/v8.tar.xz include obj
           ls -lh dist/v8.tar.xz
 
       - name: Zip (Windows)
         if: matrix.target.id == 'windows-amd64'
         shell: bash
         run: |
+          # Windows builds the v8_monolith ninja target rather than
+          # wee8 because wee8 has dllimport/dllexport issues on
+          # Windows. It packages as lib/v8.lib, so the tar layout
+          # here stays on include/lib.
           mkdir -p dist
           tar --directory v8/out/dist --create --xz --verbose ${{ matrix.target.tar_extra_args }} --file dist/v8.tar.xz include lib
           ls -lh dist/v8.tar.xz
@@ -155,7 +159,7 @@ jobs:
       #     ls -lh dist/v8.tar.xz
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target.id }}
           path: dist
@@ -171,7 +175,7 @@ jobs:
 
     steps:
       - name: Download the Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 

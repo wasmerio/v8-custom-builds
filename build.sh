@@ -78,6 +78,10 @@ done
 
 if [ "$OS" == "ios" ]
 then
+# V8's iOS profile turns lite_mode on (and wasm/turbofan off) by
+# default whenever ios_deployment_target != "17.4". Pin all three
+# related flags explicitly so the output is deterministic regardless
+# of that target.
 gn gen out/release --args="is_debug=false \
   v8_symbol_level=0 \
   symbol_level = 0 \
@@ -100,6 +104,9 @@ gn gen out/release --args="is_debug=false \
   v8_enable_handle_zapping = false \
   v8_enable_pointer_compression = true \
   v8_enable_short_builtin_calls = true \
+  v8_enable_lite_mode = false \
+  v8_enable_webassembly = true \
+  v8_enable_turbofan = true \
   v8_monolithic = true \
   ios_enable_code_signing = false \
   target_cpu=\"$ARCH\" \
@@ -136,23 +143,22 @@ gn gen out/release --args="is_debug=false \
 fi
 
 # Showtime!
-if [ "$OS" == "ios" ]; then
-  ninja -C out/release v8_monolith
-else
-  ninja -C out/release wee8
-fi
+# wee8 bundles the wasm-c-api shim (wasm_engine_new, wasm_module_new, ...)
+# that downstream consumers link against. v8_monolith is larger but
+# omits those C-ABI symbols.
+ninja -C out/release wee8
 
 ls -laR out/release/obj
 
-# Package the output into a proper directory structure:
-#   include/         - V8 public headers
-#   include/wasm-c-api/wasm.h - Wasm C API header (patched)
-#   lib/libv8.a      - The built library
+# Package into dist layout:
+#   include/                    - V8 public headers
+#   include/wasm-c-api/wasm.h   - patched wasm-c-api header
+#   obj/libwee8.a               - built library
 DIST_DIR="out/dist"
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR/include"
 mkdir -p "$DIST_DIR/include/wasm-c-api"
-mkdir -p "$DIST_DIR/lib"
+mkdir -p "$DIST_DIR/obj"
 
 # Copy V8 public headers (preserving subdirectory structure)
 cp -R include/* "$DIST_DIR/include/"
@@ -162,12 +168,7 @@ find "$DIST_DIR/include" -type f ! -name "*.h" -delete
 # Copy the patched wasm C API header
 cp third_party/wasm-api/wasm.h "$DIST_DIR/include/wasm-c-api/wasm.h"
 
-# Copy the library (renamed to libv8.a)
-if [ "$OS" == "ios" ]; then
-  cp out/release/obj/libv8_monolith.a "$DIST_DIR/lib/libv8.a"
-else
-  cp out/release/obj/libwee8.a "$DIST_DIR/lib/libv8.a"
-fi
+cp out/release/obj/libwee8.a "$DIST_DIR/obj/libwee8.a"
 
 echo "=== Distribution layout ==="
 find "$DIST_DIR" -type f | sort
