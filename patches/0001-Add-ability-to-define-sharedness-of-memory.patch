@@ -23,7 +23,7 @@ index 9d59c97e225..4ad54f3f6cb 100644
        return MemoryType::make(limits);
      }
      case i::wasm::kExternalGlobal: {
-@@ -2286,7 +2287,8 @@ WASM_EXPORT auto Memory::make(Store* store_abs, const MemoryType* type)
+@@ -2284,7 +2285,8 @@ WASM_EXPORT auto Memory::make(Store* store_abs, const MemoryType* type)
      if (maximum > i::wasm::kSpecMaxMemory32Pages) return nullptr;
    }
    // TODO(wasm+): Support shared memory and memory64.
@@ -33,7 +33,26 @@ index 9d59c97e225..4ad54f3f6cb 100644
    i::wasm::AddressType address_type = i::wasm::AddressType::kI32;
    i::DirectHandle<i::WasmMemoryObject> memory_obj;
    if (!i::WasmMemoryObject::New(isolate, minimum, maximum, shared, address_type)
-diff --git a/third_party/wasm-api/wasm.h b/third_party/wasm-api/wasm.h
+@@ -2301,7 +2303,8 @@ WASM_EXPORT auto Memory::type() const -> own<MemoryType> {
+                                        i::wasm::kWasmPageSize);
+   uint32_t max =
+       memory->has_maximum_pages() ? memory->maximum_pages() : 0xFFFFFFFFu;
+-  return MemoryType::make(Limits(min, max));
++  return MemoryType::make(
++      Limits(min, max, memory->array_buffer()->is_shared()));
+ }
+ 
+ WASM_EXPORT auto Memory::data() const -> byte_t* {
+@@ -2720,7 +2723,7 @@ extern "C++" inline auto hide_limits(const wasm::Limits& limits)
+ }
+ 
+ extern "C++" inline auto reveal_limits(wasm_limits_t limits) -> wasm::Limits {
+-  return wasm::Limits(limits.min, limits.max);
++  return wasm::Limits(limits.min, limits.max, limits.shared);
+ }
+ 
+ extern "C++" inline auto hide_valkind(wasm::ValKind kind) -> wasm_valkind_t {
+diff --git i/third_party/wasm-api/wasm.h w/third_party/wasm-api/wasm.h
 index 99a35dabc77..50a05297712 100644
 --- a/third_party/wasm-api/wasm.h
 +++ b/third_party/wasm-api/wasm.h
