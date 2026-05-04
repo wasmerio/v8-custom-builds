@@ -1,0 +1,269 @@
+diff --git a/src/wasm/c-api.cc b/src/wasm/c-api.cc
+index 1b4cbdbdf45..4bfe807245a 100644
+--- a/src/wasm/c-api.cc
++++ b/src/wasm/c-api.cc
+@@ -129,6 +129,8 @@ ValKind V8ValueTypeToWasm(T v8_valtype)
+       return ValKind::F32;
+     case i::wasm::kF64:
+       return ValKind::F64;
++    case i::wasm::kS128:
++      return ValKind::V128;
+     case i::wasm::kRef:
+     case i::wasm::kRefNull:
+       switch (v8_valtype.heap_representation()) {
+@@ -154,6 +156,8 @@ i::wasm::ValueType WasmValKindToV8(ValKind kind) {
+       return i::wasm::kWasmF32;
+     case ValKind::F64:
+       return i::wasm::kWasmF64;
++    case ValKind::V128:
++      return i::wasm::kWasmS128;
+     case ValKind::FUNCREF:
+       return i::wasm::kWasmFuncRef;
+     case ValKind::EXTERNREF:
+@@ -598,6 +602,7 @@ ValTypeImpl* valtype_i32 = new ValTypeImpl(ValKind::I32);
+ ValTypeImpl* valtype_i64 = new ValTypeImpl(ValKind::I64);
+ ValTypeImpl* valtype_f32 = new ValTypeImpl(ValKind::F32);
+ ValTypeImpl* valtype_f64 = new ValTypeImpl(ValKind::F64);
++ValTypeImpl* valtype_v128 = new ValTypeImpl(ValKind::V128);
+ ValTypeImpl* valtype_externref = new ValTypeImpl(ValKind::EXTERNREF);
+ ValTypeImpl* valtype_funcref = new ValTypeImpl(ValKind::FUNCREF);
+ 
+@@ -618,6 +623,9 @@ WASM_EXPORT own<ValType> ValType::make(ValKind k) {
+     case ValKind::F64:
+       valtype = valtype_f64;
+       break;
++    case ValKind::V128:
++      valtype = valtype_v128;
++      break;
+     case ValKind::EXTERNREF:
+       valtype = valtype_externref;
+       break;
+@@ -1715,8 +1723,8 @@ void PushArgs(const i::wasm::CanonicalSig* sig, const vec<Val>& args,
+         packer->Push((*WasmRefToV8(store->i_isolate(), args[i].ref())).ptr());
+         break;
+       case i::wasm::kS128:
+-        // TODO(14034): Implement.
+-        UNIMPLEMENTED();
++        packer->Push(args[i].v128());
++        break;
+       case i::wasm::kI8:
+       case i::wasm::kI16:
+       case i::wasm::kF16:
+@@ -1756,8 +1764,8 @@ void PopArgs(const i::wasm::CanonicalSig* sig, vec<Val>& results,
+         break;
+       }
+       case i::wasm::kS128:
+-        // TODO(14034): Implement.
+-        UNIMPLEMENTED();
++        results[i] = Val(packer->Pop<v128_t>());
++        break;
+       case i::wasm::kI8:
+       case i::wasm::kI16:
+       case i::wasm::kF16:
+@@ -1923,6 +1931,10 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
+         params[i] = Val(v8::base::ReadUnalignedValue<float64_t>(p));
+         p += 8;
+         break;
++      case ValKind::V128:
++        params[i] = Val(v8::base::ReadUnalignedValue<v128_t>(p));
++        p += 16;
++        break;
+       case ValKind::EXTERNREF:
+       case ValKind::FUNCREF: {
+         i::Address raw = v8::base::ReadUnalignedValue<i::Address>(p);
+@@ -1967,6 +1979,10 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
+         v8::base::WriteUnalignedValue(p, results[i].f64());
+         p += 8;
+         break;
++      case ValKind::V128:
++        v8::base::WriteUnalignedValue(p, results[i].v128());
++        p += 16;
++        break;
+       case ValKind::EXTERNREF:
+       case ValKind::FUNCREF: {
+         v8::base::WriteUnalignedValue(
+@@ -2056,9 +2072,12 @@ WASM_EXPORT auto Global::get() const -> Val {
+       }
+       return Val(V8RefValueToWasm(store, result));
+     }
+-    case i::wasm::kS128:
+-      // TODO(14034): Implement these.
+-      UNIMPLEMENTED();
++    case i::wasm::kS128: {
++      v128_t value;
++      std::memcpy(value.bytes, v8_global->GetS128RawBytes(),
++                  sizeof(value.bytes));
++      return Val(value);
++    }
+     case i::wasm::kI8:
+     case i::wasm::kI16:
+     case i::wasm::kF16:
+@@ -2081,6 +2100,12 @@ WASM_EXPORT void Global::set(const Val& val) {
+       return v8_global->SetF32(val.f32());
+     case ValKind::F64:
+       return v8_global->SetF64(val.f64());
++    case ValKind::V128: {
++      v128_t value = val.v128();
++      std::memcpy(v8_global->GetS128RawBytes(), value.bytes,
++                  sizeof(value.bytes));
++      return;
++    }
+     case ValKind::EXTERNREF:
+       return v8_global->SetRef(
+           WasmRefToV8(impl(this)->store()->i_isolate(), val.ref()));
+@@ -3036,6 +3061,9 @@ inline auto hide_val(wasm::Val v) -> wasm_val_t {
+     case wasm::ValKind::F64:
+       v2.of.f64 = v.f64();
+       break;
++    case wasm::ValKind::V128:
++      std::memcpy(v2.of.v128.bytes, v.v128().bytes, sizeof(v2.of.v128.bytes));
++      break;
+     case wasm::ValKind::EXTERNREF:
+     case wasm::ValKind::FUNCREF:
+       v2.of.ref = hide_ref(v.ref());
+@@ -3061,6 +3089,9 @@ inline auto release_val(wasm::Val v) -> wasm_val_t {
+     case wasm::ValKind::F64:
+       v2.of.f64 = v.f64();
+       break;
++    case wasm::ValKind::V128:
++      std::memcpy(v2.of.v128.bytes, v.v128().bytes, sizeof(v2.of.v128.bytes));
++      break;
+     case wasm::ValKind::EXTERNREF:
+     case wasm::ValKind::FUNCREF:
+       v2.of.ref = release_ref(v.release_ref());
+@@ -3081,6 +3112,11 @@ inline auto adopt_val(wasm_val_t v) -> wasm::Val {
+       return wasm::Val(v.of.f32);
+     case wasm::ValKind::F64:
+       return wasm::Val(v.of.f64);
++    case wasm::ValKind::V128: {
++      v128_t value;
++      std::memcpy(value.bytes, v.of.v128.bytes, sizeof(value.bytes));
++      return wasm::Val(value);
++    }
+     case wasm::ValKind::EXTERNREF:
+     case wasm::ValKind::FUNCREF:
+       return wasm::Val(adopt_ref(v.of.ref));
+@@ -3113,6 +3149,12 @@ inline auto borrow_val(const wasm_val_t* v) -> borrowed_val {
+     case wasm::ValKind::F64:
+       v2 = wasm::Val(v->of.f64);
+       break;
++    case wasm::ValKind::V128: {
++      v128_t value;
++      std::memcpy(value.bytes, v->of.v128.bytes, sizeof(value.bytes));
++      v2 = wasm::Val(value);
++      break;
++    }
+     case wasm::ValKind::EXTERNREF:
+     case wasm::ValKind::FUNCREF:
+       v2 = wasm::Val(adopt_ref(v->of.ref));
+diff --git a/third_party/wasm-api/wasm.h b/third_party/wasm-api/wasm.h
+index 99a35dabc77..843f67c9fe2 100644
+--- a/third_party/wasm-api/wasm.h
++++ b/third_party/wasm-api/wasm.h
+@@ -182,6 +182,7 @@ enum wasm_valkind_enum {
+   WASM_I64,
+   WASM_F32,
+   WASM_F64,
++  WASM_V128,
+   WASM_EXTERNREF = 128,
+   WASM_FUNCREF,
+ };
+@@ -312,6 +313,10 @@ WASM_API_EXTERN const wasm_externtype_t* wasm_exporttype_type(const wasm_exportt
+ 
+ struct wasm_ref_t;
+ 
++typedef struct wasm_v128_t {
++  uint8_t bytes[16];
++} wasm_v128_t;
++
+ typedef struct wasm_val_t {
+   wasm_valkind_t kind;
+   union {
+@@ -319,6 +324,7 @@ typedef struct wasm_val_t {
+     int64_t i64;
+     float32_t f32;
+     float64_t f64;
++    wasm_v128_t v128;
+     struct wasm_ref_t* ref;
+   } of;
+ } wasm_val_t;
+@@ -708,6 +714,7 @@ static inline void* wasm_val_ptr(const wasm_val_t* val) {
+ #define WASM_I64_VAL(i) {.kind = WASM_I64, .of = {.i64 = i}}
+ #define WASM_F32_VAL(z) {.kind = WASM_F32, .of = {.f32 = z}}
+ #define WASM_F64_VAL(z) {.kind = WASM_F64, .of = {.f64 = z}}
++#define WASM_V128_VAL(v) {.kind = WASM_V128, .of = {.v128 = v}}
+ #define WASM_REF_VAL(r) {.kind = WASM_EXTERNREF, .of = {.ref = r}}
+ #define WASM_INIT_VAL {.kind = WASM_EXTERNREF, .of = {.ref = NULL}}
+ 
+diff --git a/third_party/wasm-api/wasm.hh b/third_party/wasm-api/wasm.hh
+index c98a1f493f8..e5024a14a54 100644
+--- a/third_party/wasm-api/wasm.hh
++++ b/third_party/wasm-api/wasm.hh
+@@ -35,6 +35,10 @@ using byte_t = char;
+ using float32_t = float;
+ using float64_t = double;
+ 
++struct v128_t {
++  uint8_t bytes[16];
++};
++
+ 
+ namespace wasm {
+ 
+@@ -267,7 +271,7 @@ struct Limits {
+ // Value Types
+ 
+ enum class ValKind : uint8_t {
+-  I32, I64, F32, F64,
++  I32, I64, F32, F64, V128,
+   EXTERNREF = 128, FUNCREF,
+ };
+ 
+@@ -479,6 +483,7 @@ class Val {
+     int64_t i64;
+     float32_t f32;
+     float64_t f64;
++    v128_t v128;
+     Ref* ref;
+   } impl_;
+ 
+@@ -490,6 +495,7 @@ public:
+   explicit Val(int64_t i) : kind_(ValKind::I64) { impl_.i64 = i; }
+   explicit Val(float32_t z) : kind_(ValKind::F32) { impl_.f32 = z; }
+   explicit Val(float64_t z) : kind_(ValKind::F64) { impl_.f64 = z; }
++  explicit Val(v128_t v) : kind_(ValKind::V128) { impl_.v128 = v; }
+   explicit Val(own<Ref>&& r) : kind_(ValKind::EXTERNREF) { impl_.ref = r.release(); }
+ 
+   Val(Val&& that) : kind_(that.kind_), impl_(that.impl_) {
+@@ -507,6 +513,7 @@ public:
+   static auto i64(int64_t x) -> Val { return Val(x); }
+   static auto f32(float32_t x) -> Val { return Val(x); }
+   static auto f64(float64_t x) -> Val { return Val(x); }
++  static auto v128(v128_t x) -> Val { return Val(x); }
+   static auto ref(own<Ref>&& x) -> Val { return Val(std::move(x)); }
+   template<class T> inline static auto make(T x) -> Val;
+   template<class T> inline static auto make(own<T>&& x) -> Val;
+@@ -535,6 +542,7 @@ public:
+   auto i64() const -> int64_t { assert(kind_ == ValKind::I64); return impl_.i64; }
+   auto f32() const -> float32_t { assert(kind_ == ValKind::F32); return impl_.f32; }
+   auto f64() const -> float64_t { assert(kind_ == ValKind::F64); return impl_.f64; }
++  auto v128() const -> v128_t { assert(kind_ == ValKind::V128); return impl_.v128; }
+   auto ref() const -> Ref* { assert(is_ref()); return impl_.ref; }
+   template<class T> inline auto get() const -> T;
+ 
+@@ -563,6 +571,7 @@ template<> inline auto Val::make<int32_t>(int32_t x) -> Val { return Val(x); }
+ template<> inline auto Val::make<int64_t>(int64_t x) -> Val { return Val(x); }
+ template<> inline auto Val::make<float32_t>(float32_t x) -> Val { return Val(x); }
+ template<> inline auto Val::make<float64_t>(float64_t x) -> Val { return Val(x); }
++template<> inline auto Val::make<v128_t>(v128_t x) -> Val { return Val(x); }
+ template<> inline auto Val::make<Ref>(own<Ref>&& x) -> Val {
+   return Val(std::move(x));
+ }
+@@ -578,6 +587,7 @@ template<> inline auto Val::get<int32_t>() const -> int32_t { return i32(); }
+ template<> inline auto Val::get<int64_t>() const -> int64_t { return i64(); }
+ template<> inline auto Val::get<float32_t>() const -> float32_t { return f32(); }
+ template<> inline auto Val::get<float64_t>() const -> float64_t { return f64(); }
++template<> inline auto Val::get<v128_t>() const -> v128_t { return v128(); }
+ template<> inline auto Val::get<Ref*>() const -> Ref* { return ref(); }
+ 
+ template<> inline auto Val::get<uint32_t>() const -> uint32_t {
