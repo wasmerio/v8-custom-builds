@@ -25,9 +25,9 @@ jobs:
           - id: 'darwin-aarch64'
             os: 'macos-15'
             native: true
-          - id: 'ios'
-            os: 'darwin-aarch64'
-            native: false
+          # - id: 'ios'
+          #   os: 'darwin-aarch64'
+          #   native: false
           - id: 'android'
             os: 'ubuntu-22.04'
             native: false
