@@ -236,15 +236,15 @@ jobs:
           asset_name: v8-darwin-aarch64.tar.xz
           asset_content_type: application/gzip
           
-      - name: Upload Release Asset iOS
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/ios/v8.tar.xz
-          asset_name: v8-ios.tar.xz
-          asset_content_type: application/gzip
+      # - name: Upload Release Asset iOS
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+      #     asset_path: artifacts/ios/v8.tar.xz
+      #     asset_name: v8-ios.tar.xz
+      #     asset_content_type: application/gzip
 
       - name: Upload Release Asset Android
         uses: actions/upload-release-asset@v1
