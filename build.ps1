@@ -37,6 +37,11 @@ foreach ($f in $files){
   git apply --ignore-whitespace $f
 }
 
+# Download chromium's bundled clang-cl. MSVC produces struct layouts that
+# disagree with Torque-generated static_asserts (ExtendedMap, JSInterceptorMap)
+# in V8 14+. Chromium's clang is what Torque calibrates against.
+python3 tools/clang/scripts/update.py
+
 # Write args.gn directly to avoid PowerShell quote-stripping issues
 New-Item -ItemType Directory -Force -Path "out\release" | Out-Null
 @'
@@ -44,7 +49,8 @@ is_debug = false
 v8_symbol_level = 2
 is_component_build = false
 is_official_build = false
-use_custom_libcxx = false
+is_clang = true
+use_custom_libcxx = true
 use_custom_libcxx_for_host = true
 use_glib = false
 v8_expose_symbols = true
