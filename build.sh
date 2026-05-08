@@ -76,6 +76,20 @@ for patch in ../patches/*.patch; do
   git apply "$patch"
 done
 
+# V8 14+ headers require clang (use __has_warning and friends GCC can't parse).
+# Use chromium's bundled prebuilt to avoid issues with apt's clang.
+if [ "$OS" == "linux" ]; then
+  python3 tools/clang/scripts/update.py
+  CLANG_ARGS="is_clang=true use_custom_libcxx=false use_custom_libcxx_for_host=false"
+elif [ "$OS" == "mac" ]; then
+  # V8 14+ uses std::atomic_ref (libc++ ≥ LLVM 19); Apple's libc++ in
+  # Xcode 16 lacks it. Build against chromium's bundled libc++ instead.
+  python3 tools/clang/scripts/update.py
+  CLANG_ARGS="is_clang=true use_custom_libcxx=true use_custom_libcxx_for_host=true"
+else
+  CLANG_ARGS="is_clang=false use_custom_libcxx=false use_custom_libcxx_for_host=false"
+fi
+
 if [ "$OS" == "ios" ]
 then
 gn gen out/release --args="is_debug=false \
@@ -83,11 +97,9 @@ gn gen out/release --args="is_debug=false \
   symbol_level = 0 \
   is_component_build=false \
   is_official_build=false \
-  use_custom_libcxx=false \
-  use_custom_libcxx_for_host=false \
   use_sysroot=false \
   use_glib=false \
-  is_clang=false \
+  $CLANG_ARGS \
   v8_expose_symbols=true \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
@@ -114,11 +126,9 @@ gn gen out/release --args="is_debug=false \
   symbol_level = 0 \
   is_component_build=false \
   is_official_build=false \
-  use_custom_libcxx=false \
-  use_custom_libcxx_for_host=false \
   use_sysroot=false \
   use_glib=false \
-  is_clang=false \
+  $CLANG_ARGS \
   v8_expose_symbols=true \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
