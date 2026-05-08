@@ -8,7 +8,7 @@ set -x
 DEPOT_TOOLS_REPO="https://chromium.googlesource.com/chromium/tools/depot_tools.git"
 DEPOT_TOOLS_DIR="/tmp/depot_tools"
 
-V8_TAG=${V8_TAG:-"13.6.233.17"}
+V8_TAG=${V8_TAG:-"15.0.1"}
 
 if [ -z "$1" ]; then 
   case $(uname -m) in
@@ -72,7 +72,7 @@ gclient sync --with_branch_heads --with_tags --nohooks
 # Run only the hooks required for building
 python3 build/util/lastchange.py -o build/util/LASTCHANGE
 
-for patch in ../patches/*.patch; do 
+for patch in ../patches/*.patch; do
   git apply "$patch"
 done
 
@@ -99,6 +99,7 @@ gn gen out/release --args="is_debug=false \
   v8_enable_fast_mksnapshot = true \
   v8_enable_handle_zapping = false \
   v8_enable_pointer_compression = true \
+  use_siso = false \
   v8_enable_short_builtin_calls = true \
   v8_monolithic = true \
   ios_enable_code_signing = false \
@@ -129,6 +130,7 @@ gn gen out/release --args="is_debug=false \
   v8_enable_fast_mksnapshot = true \
   v8_enable_handle_zapping = false \
   v8_enable_pointer_compression = true \
+  use_siso = false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
