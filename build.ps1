@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
 $DEPOT_TOOLS_REPO="https://chromium.googlesource.com/chromium/tools/depot_tools.git"
-$V8_TAG="13.6.233.17"
+$V8_TAG="15.0.1"
 
 # Clone depot-tools
 if (-not (Test-Path -Path "depot_tools" -PathType Container)) {
@@ -37,6 +37,11 @@ foreach ($f in $files){
   git apply --ignore-whitespace $f
 }
 
+# Download chromium's bundled clang-cl. MSVC produces struct layouts that
+# disagree with Torque-generated static_asserts (ExtendedMap, JSInterceptorMap)
+# in V8 14+. Chromium's clang is what Torque calibrates against.
+python3 tools/clang/scripts/update.py
+
 # Write args.gn directly to avoid PowerShell quote-stripping issues
 New-Item -ItemType Directory -Force -Path "out\release" | Out-Null
 @'
@@ -44,13 +49,15 @@ is_debug = false
 v8_symbol_level = 2
 is_component_build = false
 is_official_build = false
-use_custom_libcxx = false
+is_clang = true
+use_custom_libcxx = true
 use_custom_libcxx_for_host = true
 use_glib = false
 v8_expose_symbols = true
 v8_optimized_debug = false
 v8_enable_sandbox = false
 v8_enable_i18n_support = true
+v8_enable_temporal_support = false
 icu_use_data_file = false
 v8_enable_gdbjit = false
 v8_use_external_startup_data = false
@@ -58,6 +65,7 @@ v8_enable_pointer_compression = true
 v8_enable_short_builtin_calls = true
 v8_monolithic = true
 treat_warnings_as_errors = false
+use_siso = false
 target_cpu = "x64"
 v8_target_cpu = "x64"
 '@ | Set-Content -Path "out\release\args.gn" -Encoding utf8

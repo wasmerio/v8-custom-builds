@@ -10,7 +10,7 @@ index 1b4cbdbdf45..4bfe807245a 100644
 +      return ValKind::V128;
      case i::wasm::kRef:
      case i::wasm::kRefNull:
-       switch (v8_valtype.heap_representation()) {
+       switch (v8_valtype.generic_kind()) {
 @@ -154,6 +156,8 @@ i::wasm::ValueType WasmValKindToV8(ValKind kind) {
        return i::wasm::kWasmF32;
      case ValKind::F64:

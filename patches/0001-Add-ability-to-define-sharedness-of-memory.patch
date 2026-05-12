@@ -13,37 +13,37 @@ diff --git a/src/wasm/c-api.cc b/src/wasm/c-api.cc
 index 9d59c97e225..4ad54f3f6cb 100644
 --- a/src/wasm/c-api.cc
 +++ b/src/wasm/c-api.cc
-@@ -209,7 +209,8 @@ own<ExternType> GetImportExportType(const i::wasm::WasmModule* module,
+@@ -211,7 +211,8 @@ own<ExternType> GetImportExportType(const i::wasm::WasmModule* module,
        Limits limits(memory.initial_pages,
                      memory.has_maximum_pages
                          ? v8::base::checked_cast<int32_t>(memory.maximum_pages)
 -                        : -1);
 +                        : -1,
-+                    memory.is_shared);
++                    memory.is_shared == i::SharedFlag::kYes);
        return MemoryType::make(limits);
      }
      case i::wasm::kExternalGlobal: {
-@@ -2284,7 +2285,8 @@ WASM_EXPORT auto Memory::make(Store* store_abs, const MemoryType* type)
+@@ -2314,7 +2315,8 @@ WASM_EXPORT auto Memory::make(Store* store_abs, const MemoryType* type)
      if (maximum > i::wasm::kSpecMaxMemory32Pages) return nullptr;
    }
    // TODO(wasm+): Support shared memory and memory64.
--  i::SharedFlag shared = i::SharedFlag::kNotShared;
+-  i::SharedFlag shared = i::SharedFlag::kNo;
 +  i::SharedFlag shared =
-+      limits.shared ? i::SharedFlag::kShared : i::SharedFlag::kNotShared;
++      limits.shared ? i::SharedFlag::kYes : i::SharedFlag::kNo;
    i::wasm::AddressType address_type = i::wasm::AddressType::kI32;
    i::DirectHandle<i::WasmMemoryObject> memory_obj;
    if (!i::WasmMemoryObject::New(isolate, minimum, maximum, shared, address_type)
-@@ -2301,7 +2303,8 @@ WASM_EXPORT auto Memory::type() const -> own<MemoryType> {
+@@ -2331,7 +2333,8 @@ WASM_EXPORT auto Memory::type() const -> own<MemoryType> {
                                         i::wasm::kWasmPageSize);
    uint32_t max =
        memory->has_maximum_pages() ? memory->maximum_pages() : 0xFFFFFFFFu;
 -  return MemoryType::make(Limits(min, max));
 +  return MemoryType::make(
-+      Limits(min, max, memory->array_buffer()->is_shared()));
++      Limits(min, max, memory->backing_store()->is_shared()));
  }
  
  WASM_EXPORT auto Memory::data() const -> byte_t* {
-@@ -2720,7 +2723,7 @@ extern "C++" inline auto hide_limits(const wasm::Limits& limits)
+@@ -2748,7 +2751,7 @@ extern "C++" inline auto hide_limits(const wasm::Limits& limits)
  }
  
  extern "C++" inline auto reveal_limits(wasm_limits_t limits) -> wasm::Limits {
@@ -68,7 +68,7 @@ diff --git a/third_party/wasm-api/wasm.hh b/third_party/wasm-api/wasm.hh
 index cb1b304bf23..b079cf3934a 100644
 --- a/third_party/wasm-api/wasm.hh
 +++ b/third_party/wasm-api/wasm.hh
-@@ -255,9 +255,10 @@ enum class Mutability : uint8_t { CONST, VAR };
+@@ -257,9 +257,10 @@ enum class Mutability : uint8_t { CONST, VAR };
  struct Limits {
    uint32_t min;
    uint32_t max;

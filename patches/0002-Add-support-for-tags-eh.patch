@@ -137,7 +137,7 @@ index 8650fb3549b..15fceadff2e 100644
  WASM_EXPORT auto Extern::table() const -> const Table* {
    return kind() == ExternKind::TABLE ? static_cast<const Table*>(this)
                                       : nullptr;
-@@ -2103,6 +2167,62 @@ WASM_EXPORT void Global::set(const Val& val) {
+@@ -2103,6 +2167,66 @@ WASM_EXPORT void Global::set(const Val& val) {
    }
  }
  
@@ -186,12 +186,16 @@ index 8650fb3549b..15fceadff2e 100644
 +
 +WASM_EXPORT auto Tag::type() const -> own<TagType> {
 +  i::DirectHandle<i::WasmTagObject> v8_tag = impl(this)->v8_object();
-+  auto v8_params = v8_tag->serialized_signature();
-+  auto param_count = v8_params->length();
++  i::wasm::CanonicalTypeIndex type_index{
++      static_cast<uint32_t>(v8_tag->canonical_type_index())};
++  const i::wasm::CanonicalSig* sig = i::wasm::GetWasmEngine()
++                                         ->type_canonicalizer()
++                                         ->LookupFunctionSignature(type_index);
++  auto param_count = sig->parameter_count();
 +  ownvec<ValType> params = ownvec<ValType>::make_uninitialized(param_count);
 +
-+  for (int i = 0; i < param_count; i++) {
-+    params[i] = ValType::make(V8ValueTypeToWasm(v8_params->get(i)));
++  for (size_t i = 0; i < param_count; i++) {
++    params[i] = ValType::make(V8ValueTypeToWasm(sig->GetParam(i)));
 +  }
 +
 +  return TagType::make(std::move(params));
