@@ -131,6 +131,7 @@ gn gen out/release --args="is_debug=false \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
   v8_enable_i18n_support=true \
+  v8_enable_temporal_support=false \
   icu_use_data_file=false \
   v8_enable_gdbjit=false \
   v8_use_external_startup_data=false \
@@ -160,6 +161,7 @@ gn gen out/release --args="is_debug=false \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
   v8_enable_i18n_support=true \
+  v8_enable_temporal_support=false \
   icu_use_data_file=false \
   v8_enable_gdbjit=false \
   v8_use_external_startup_data=false \
