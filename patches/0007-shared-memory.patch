@@ -52,7 +52,7 @@ index ddb7fa93369..fadf87287d1 100644
 +  auto shared = std::make_unique<SharedMemoryData>();
 +  shared->backing_store = buffer->GetBackingStore();
 +  shared->maximum_pages =
-+      memory->has_maximum_pages() ? memory->maximum_pages() : v8::internal::wasm::kNoMaximum;
++      memory->has_maximum_pages() ? memory->maximum_pages() : i::WasmMemoryObject::kNoMaximum;
 +  shared->address_type = memory->address_type();
 +  return make_own(seal<Shared<Memory>>(shared.release()));
 +}
