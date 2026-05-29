@@ -56,14 +56,15 @@ v8_enable_gdbjit = false
 v8_use_external_startup_data = false
 v8_enable_pointer_compression = true
 v8_enable_short_builtin_calls = true
+v8_monolithic = true
 treat_warnings_as_errors = false
 target_cpu = "x64"
 v8_target_cpu = "x64"
 '@ | Set-Content -Path "out\release\args.gn" -Encoding utf8
 gn gen out/release
 
-# Showtime!
-ninja -C out/release wee8
+# Showtime! (wee8 has dllimport/dllexport issues on Windows, use v8_monolith instead)
+ninja -C out/release v8_monolith
 
 Get-ChildItem -Recurse out/release/obj
 
@@ -86,8 +87,8 @@ Get-ChildItem -Path "include" -Directory | ForEach-Object {
 # Copy the patched wasm C API header
 Copy-Item -Path "third_party\wasm-api\wasm.h" -Destination "$DIST_DIR\include\wasm-c-api\wasm.h"
 
-# Copy the library (renamed from wee8.lib to v8.lib)
-Copy-Item -Path "out\release\obj\wee8.lib" -Destination "$DIST_DIR\lib\v8.lib"
+# Copy the library (renamed from v8_monolith.lib to v8.lib)
+Copy-Item -Path "out\release\obj\v8_monolith.lib" -Destination "$DIST_DIR\lib\v8.lib"
 
 Write-Host "=== Distribution layout ==="
 Get-ChildItem -Recurse -File $DIST_DIR | ForEach-Object { Write-Host $_.FullName }
