@@ -1,0 +1,15 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 44f5e49afce..3529d25bf3d 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -7241,6 +7241,10 @@ if (v8_enable_webassembly) {
+ 
+     configs = [ ":internal_config" ]
+ 
++    if (is_win) {
++      defines = [ "LIBWASM_STATIC" ]
++    }
++
+     sources = [
+       ### gcmole(all) ###
+       "src/wasm/c-api.cc",
