@@ -71,7 +71,7 @@ jobs:
       - name: Install dependencies on Alpine
         if: startsWith(matrix.target.id, 'linux-musl')
         run: |
-          apk add ninja bash git cmake clang-dev compiler-rt lld llvm-dev rust rust-bindgen rustfmt wget python3 curl tar xz py3-virtualenv py3-httplib2 py3-google-auth-httplib2 py3-setuptools py3-pip py3-six py3-distutils-extra
+          apk add ninja bash git cmake gcc clang-dev compiler-rt lld llvm-dev wget python3 curl tar xz py3-virtualenv py3-httplib2 py3-google-auth-httplib2 py3-setuptools py3-pip py3-six py3-distutils-extra
           # Alpine's apk gn lags upstream and fails on V8 15's chromium build/
           # tree (missing substitutions like module_deps_no_self). Build gn
           # from source so the toolchain matches V8's build/ expectations.
