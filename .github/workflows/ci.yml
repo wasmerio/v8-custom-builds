@@ -74,11 +74,14 @@ jobs:
           apk add ninja bash git cmake gcc clang-dev compiler-rt lld llvm-dev wget python3 curl tar xz py3-virtualenv py3-httplib2 py3-google-auth-httplib2 py3-setuptools py3-pip py3-six py3-distutils-extra
           # Alpine's apk gn lags upstream and fails on V8 15's chromium build/
           # tree (missing substitutions like module_deps_no_self). Build gn
-          # from source so the toolchain matches V8's build/ expectations.
+          # from source, pinned to the exact revision V8 15.0.1 uses (its
+          # DEPS gn_version), so the toolchain matches V8's build/ expectations
+          # and the build is reproducible rather than tracking gn HEAD.
           # Full clone (gn's gen.py runs `git describe --match initial-commit`
           # for its last_commit_position; shallow clone breaks that lookup).
           git clone https://gn.googlesource.com/gn /tmp/gn
           cd /tmp/gn
+          git checkout d830369a8e7db2383ab7bb1c2c142ee2766cfea2
           python3 build/gen.py
           ninja -C out
           install -m 0755 out/gn /usr/local/bin/gn
