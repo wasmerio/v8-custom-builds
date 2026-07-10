@@ -76,10 +76,9 @@ for patch in ../patches/*.patch; do
   git apply "$patch"
 done
 
-# V8 14+ headers require clang (use __has_warning and friends GCC can't parse).
-# glibc: chromium's bundled prebuilt. musl: glibc-linked prebuilt won't run,
-# so use system clang via apk and chromium's unbundle:default toolchain
-# (honours $CC/$CXX/$AR/$NM, sidesteps the bundled-clang/lld assumptions).
+# V8 14+ headers need clang (__has_warning etc. GCC can't parse). glibc uses
+# chromium's bundled clang; musl can't run that glibc-linked binary, so it uses
+# system clang via chromium's unbundle:default toolchain ($CC/$CXX/$AR/$NM).
 if [ "$OS" == "linux" ]; then
   if [ -f /etc/alpine-release ]; then
     export CC=clang
@@ -95,11 +94,8 @@ if [ "$OS" == "linux" ]; then
     # falls back to its native x86_64-alpine-linux-musl default and finds the
     # musl crt files / libgcc.
     grep -rl '"--target=x86_64-unknown-linux-gnu"' build/config/ | xargs -r sed -i '/"--target=x86_64-unknown-linux-gnu"/d'
-    # Temporal is disabled (v8_enable_temporal_support=false), so wee8 pulls in
-    # no Rust. enable_rust=false then lets us skip the entire rust-toolchain
-    # apparatus — glibc-triple swap, known-triples entry, nightly-rustc
-    # override, RUSTC_BOOTSTRAP — that only existed to make chromium's rust
-    # build accept Alpine's stable rustc.
+    # Temporal off (v8_enable_temporal_support=false) => wee8 links no Rust, so
+    # enable_rust=false skips chromium's whole rust-toolchain workaround.
     CLANG_ARGS="custom_toolchain=\"//build/toolchain/linux/unbundle:default\" host_toolchain=\"//build/toolchain/linux/unbundle:default\" is_clang=true clang_use_chrome_plugins=false use_custom_libcxx=false use_custom_libcxx_for_host=false enable_rust=false use_partition_alloc_as_malloc=false use_allocator_shim=false"
   else
     python3 tools/clang/scripts/update.py
