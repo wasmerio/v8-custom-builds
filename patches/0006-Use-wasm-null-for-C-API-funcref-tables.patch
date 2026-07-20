@@ -3,19 +3,16 @@ From: marxin <marxin@localhost>
 Date: Mon, 25 May 2026 00:00:00 +0200
 Subject: [PATCH] Use wasm null for C API funcref tables
 
-C API-created funcref tables must be initialized with the internal wasm null
-sentinel, not JS null. Otherwise WasmTableObject::Get does not recognize null
-entries and falls through to the lazy function placeholder path, where it
-expects a Tuple2.
+C API-created funcref tables must be initialized with the internal wasm
+null sentinel, not JS null. Otherwise WasmTableObject::Get does not
+recognize null entries and falls through to the lazy function placeholder
+path, where it expects a Tuple2. Forward-ported to V8 15.
 ---
- src/wasm/c-api.cc | 9 +++++++--
- 1 file changed, 7 insertions(+), 2 deletions(-)
-
 diff --git a/src/wasm/c-api.cc b/src/wasm/c-api.cc
-index 00000000000..00000000000 100644
+index 34c80fd..7f39779 100644
 --- a/src/wasm/c-api.cc
 +++ b/src/wasm/c-api.cc
-@@ -2292,10 +2292,15 @@ WASM_EXPORT auto Table::make(Store* store_abs, const TableType* type,
+@@ -2169,10 +2169,15 @@ WASM_EXPORT auto Table::make(Store* store_abs, const TableType* type,
      if (maximum > i::wasm::max_table_init_entries()) return nullptr;
    }
  
@@ -33,6 +30,3 @@ index 00000000000..00000000000 100644
  
    if (ref) {
      i::DirectHandle<i::JSReceiver> init = impl(ref)->v8_object();
--- 
-2.50.1
-

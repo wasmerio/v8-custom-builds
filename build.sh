@@ -8,7 +8,7 @@ set -x
 DEPOT_TOOLS_REPO="https://chromium.googlesource.com/chromium/tools/depot_tools.git"
 DEPOT_TOOLS_DIR="/tmp/depot_tools"
 
-V8_TAG=${V8_TAG:-"13.6.233.17"}
+V8_TAG=${V8_TAG:-"15.0.1"}
 
 if [ -z "$1" ]; then 
   case $(uname -m) in
@@ -72,9 +72,43 @@ gclient sync --with_branch_heads --with_tags --nohooks
 # Run only the hooks required for building
 python3 build/util/lastchange.py -o build/util/LASTCHANGE
 
-for patch in ../patches/*.patch; do 
+for patch in ../patches/*.patch; do
   git apply "$patch"
 done
+
+# V8 14+ headers need clang (__has_warning etc. GCC can't parse). glibc uses
+# chromium's bundled clang; musl can't run that glibc-linked binary, so it uses
+# system clang via chromium's unbundle:default toolchain ($CC/$CXX/$AR/$NM).
+if [ "$OS" == "linux" ]; then
+  if [ -f /etc/alpine-release ]; then
+    export CC=clang
+    export CXX=clang++
+    export AR=llvm-ar
+    export NM=llvm-nm
+    # V8 15 is built with clang 23; Alpine ships clang <=22, so strip the
+    # newer-clang-only flags chromium's config passes that Alpine's clang rejects.
+    sed -i 's|"-fdiagnostics-show-inlining-chain",\?||g' build/config/compiler/BUILD.gn
+    sed -i 's|"-fno-lifetime-dse",\?||g' build/config/compiler/BUILD.gn
+    sed -i 's|"-fsanitize-ignore-for-ubsan-feature=${invoker.sanitizer}",\?||g' build/config/sanitizers/sanitizers.gni
+    # Drop chromium's hardcoded --target=x86_64-unknown-linux-gnu so clang
+    # falls back to its native x86_64-alpine-linux-musl default and finds the
+    # musl crt files / libgcc.
+    grep -rl '"--target=x86_64-unknown-linux-gnu"' build/config/ | xargs -r sed -i '/"--target=x86_64-unknown-linux-gnu"/d'
+    # Temporal off (v8_enable_temporal_support=false) => wee8 links no Rust, so
+    # enable_rust=false skips chromium's whole rust-toolchain workaround.
+    CLANG_ARGS="custom_toolchain=\"//build/toolchain/linux/unbundle:default\" host_toolchain=\"//build/toolchain/linux/unbundle:default\" is_clang=true clang_use_chrome_plugins=false use_custom_libcxx=false use_custom_libcxx_for_host=false enable_rust=false use_partition_alloc_as_malloc=false use_allocator_shim=false"
+  else
+    python3 tools/clang/scripts/update.py
+    CLANG_ARGS="is_clang=true use_custom_libcxx=false use_custom_libcxx_for_host=false"
+  fi
+elif [ "$OS" == "mac" ]; then
+  # V8 14+ uses std::atomic_ref (libc++ ≥ LLVM 19); Apple's libc++ in
+  # Xcode 16 lacks it. Build against chromium's bundled libc++ instead.
+  python3 tools/clang/scripts/update.py
+  CLANG_ARGS="is_clang=true use_custom_libcxx=true use_custom_libcxx_for_host=true"
+else
+  CLANG_ARGS="is_clang=false use_custom_libcxx=false use_custom_libcxx_for_host=false"
+fi
 
 if [ "$OS" == "ios" ]
 then
@@ -83,15 +117,14 @@ gn gen out/release --args="is_debug=false \
   symbol_level = 0 \
   is_component_build=false \
   is_official_build=false \
-  use_custom_libcxx=false \
-  use_custom_libcxx_for_host=false \
   use_sysroot=false \
   use_glib=false \
-  is_clang=false \
+  $CLANG_ARGS \
   v8_expose_symbols=true \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
   v8_enable_i18n_support=true \
+  v8_enable_temporal_support=false \
   icu_use_data_file=false \
   v8_enable_gdbjit=false \
   v8_use_external_startup_data=false \
@@ -99,6 +132,7 @@ gn gen out/release --args="is_debug=false \
   v8_enable_fast_mksnapshot = true \
   v8_enable_handle_zapping = false \
   v8_enable_pointer_compression = true \
+  use_siso = false \
   v8_enable_short_builtin_calls = true \
   v8_monolithic = true \
   ios_enable_code_signing = false \
@@ -113,15 +147,14 @@ gn gen out/release --args="is_debug=false \
   symbol_level = 0 \
   is_component_build=false \
   is_official_build=false \
-  use_custom_libcxx=false \
-  use_custom_libcxx_for_host=false \
   use_sysroot=false \
   use_glib=false \
-  is_clang=false \
+  $CLANG_ARGS \
   v8_expose_symbols=true \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
   v8_enable_i18n_support=true \
+  v8_enable_temporal_support=false \
   icu_use_data_file=false \
   v8_enable_gdbjit=false \
   v8_use_external_startup_data=false \
@@ -129,6 +162,7 @@ gn gen out/release --args="is_debug=false \
   v8_enable_fast_mksnapshot = true \
   v8_enable_handle_zapping = false \
   v8_enable_pointer_compression = true \
+  use_siso = false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
