@@ -42,6 +42,11 @@ else
   OS=$2
 fi
 
+ARM_CFI_ARG=""
+if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
+  # Ubuntu's native ARM assembler does not accept V8's BTI marker flag.
+  ARM_CFI_ARG='arm_control_flow_integrity = "none"'
+fi
 
 if [ ! -d "$DEPOT_TOOLS_DIR" ]
 then 
@@ -108,6 +113,7 @@ gn gen out/release --args="is_debug=false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
+  $ARM_CFI_ARG \
   target_environment=\"device\" \
   "
 else
@@ -135,6 +141,7 @@ gn gen out/release --args="is_debug=false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
+  $ARM_CFI_ARG \
   "
 fi
 
