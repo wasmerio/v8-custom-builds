@@ -15,6 +15,9 @@ if [ -z "$1" ]; then
 	"x86_64")
 	  ARCH="x64"
       ;;
+	"aarch64"|"arm64")
+	  ARCH="arm64"
+      ;;
   
 	*)
 	  ARCH=$(uname -m)
@@ -65,7 +68,7 @@ fi
 
 cd v8
 git reset --hard
-git checkout $V8_TAG
+git checkout "$V8_TAG"
 # Sync deps without hooks to avoid downloading unnecessary test data
 # (wasm-spec-tests, wasm-js) which can fail on musl/Alpine due to gsutil issues.
 gclient sync --with_branch_heads --with_tags --nohooks
@@ -171,3 +174,10 @@ fi
 
 echo "=== Distribution layout ==="
 find "$DIST_DIR" -type f | sort
+
+if [ "$OS" = "linux" ] && command -v readelf >/dev/null 2>&1; then
+  if readelf -rW "$DIST_DIR/lib/libv8.a" | grep -Eq 'R_X86_64_TPOFF32|R_AARCH64_TLSLE'; then
+    echo "The V8 archive still contains local-exec TLS relocations" >&2
+    exit 1
+  fi
+fi

@@ -1,0 +1,18 @@
+diff --git i/src/common/thread-local-storage.h w/src/common/thread-local-storage.h
+index 8957a6ce4ee..aed4b952a1d 100644
+--- i/src/common/thread-local-storage.h
++++ w/src/common/thread-local-storage.h
+@@ -7,6 +7,13 @@
+ 
+ #include "include/v8config.h"
+ 
++// These archives are embedded in shared libraries such as Python extension
++// modules. Linux's local-exec TLS model cannot be linked into a shared object,
++// so select V8's library-safe local-dynamic accessors for Linux builds.
++#if defined(V8_TARGET_OS_LINUX) && !defined(V8_TLS_USED_IN_LIBRARY)
++#define V8_TLS_USED_IN_LIBRARY
++#endif
++
+ #if defined(COMPONENT_BUILD) || defined(V8_TLS_USED_IN_LIBRARY)
+ #define V8_TLS_LIBRARY_MODE 1
+ #else

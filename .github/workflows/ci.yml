@@ -12,16 +12,16 @@ jobs:
           - id: 'linux-amd64'
             os: "ubuntu-22.04"
             native: true
-            #- id: 'linux-arm64'
-            #  os: 'ubuntu-24.04-arm'
-            #  native: true
+          - id: 'linux-arm64'
+            os: 'ubuntu-24.04-arm'
+            native: true
           - id: 'linux-musl'
             os: 'ubuntu-22.04'
             native: true
             container: alpine:3.21
-          # - id: 'darwin-amd64'
-          #   os: 'macos-15-large'
-          #   native: true
+          - id: 'darwin-amd64'
+            os: 'macos-15-intel'
+            native: true
           - id: 'darwin-aarch64'
             os: 'macos-15'
             native: true
@@ -206,6 +206,16 @@ jobs:
           asset_name: v8-linux-amd64.tar.xz
           asset_content_type: application/gzip
 
+      - name: Upload Release Asset Linux (arm64)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/linux-arm64/v8.tar.xz
+          asset_name: v8-linux-arm64.tar.xz
+          asset_content_type: application/gzip
+
       - name: Upload Release Asset Linux musl
         uses: actions/upload-release-asset@v1
         env:
@@ -213,18 +223,18 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/linux-musl/v8.tar.xz
-          asset_name: v8-linux-musl.tar.xz
+          asset_name: v8-linux-musl-amd64.tar.xz
           asset_content_type: application/gzip
 
-      # - name: Upload Release Asset Darwin
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
-      #     asset_path: artifacts/darwin-amd64/v8.tar.xz
-      #     asset_name: v8-darwin-amd64.tar.xz
-      #     asset_content_type: application/gzip
+      - name: Upload Release Asset Darwin (amd64)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/darwin-amd64/v8.tar.xz
+          asset_name: v8-darwin-amd64.tar.xz
+          asset_content_type: application/gzip
 
       - name: Upload Release Asset Darwin (aarch64)
         uses: actions/upload-release-asset@v1
@@ -253,7 +263,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/android/v8.tar.xz
-          asset_name: v8-android.tar.xz
+          asset_name: v8-android-arm64.tar.xz
           asset_content_type: application/gzip
 
       - name: Upload Release Asset Windows
