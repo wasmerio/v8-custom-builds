@@ -15,6 +15,9 @@ if [ -z "$1" ]; then
 	"x86_64")
 	  ARCH="x64"
       ;;
+	"aarch64"|"arm64")
+	  ARCH="arm64"
+      ;;
   
 	*)
 	  ARCH=$(uname -m)
@@ -39,6 +42,15 @@ else
   OS=$2
 fi
 
+ARM_TOOLCHAIN_ARGS=""
+IS_CLANG=false
+if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
+  # Ubuntu's native ARM assembler does not accept V8's BTI marker flag, and
+  # GCC 13 rejects V8's ARM NEON intrinsic conversions. Use the runner's native
+  # Clang without Chrome-only plugins or BTI.
+  ARM_TOOLCHAIN_ARGS='arm_control_flow_integrity = "none" clang_base_path = "/usr/lib/llvm-18" clang_version = "18" clang_use_chrome_plugins = false'
+  IS_CLANG=true
+fi
 
 if [ ! -d "$DEPOT_TOOLS_DIR" ]
 then 
@@ -65,7 +77,7 @@ fi
 
 cd v8
 git reset --hard
-git checkout $V8_TAG
+git checkout "$V8_TAG"
 # Sync deps without hooks to avoid downloading unnecessary test data
 # (wasm-spec-tests, wasm-js) which can fail on musl/Alpine due to gsutil issues.
 gclient sync --with_branch_heads --with_tags --nohooks
@@ -87,7 +99,7 @@ gn gen out/release --args="is_debug=false \
   use_custom_libcxx_for_host=false \
   use_sysroot=false \
   use_glib=false \
-  is_clang=false \
+  is_clang=$IS_CLANG \
   v8_expose_symbols=true \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
@@ -105,6 +117,7 @@ gn gen out/release --args="is_debug=false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
+  $ARM_TOOLCHAIN_ARGS \
   target_environment=\"device\" \
   "
 else
@@ -117,7 +130,7 @@ gn gen out/release --args="is_debug=false \
   use_custom_libcxx_for_host=false \
   use_sysroot=false \
   use_glib=false \
-  is_clang=false \
+  is_clang=$IS_CLANG \
   v8_expose_symbols=true \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
@@ -132,6 +145,7 @@ gn gen out/release --args="is_debug=false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
+  $ARM_TOOLCHAIN_ARGS \
   "
 fi
 
@@ -171,3 +185,10 @@ fi
 
 echo "=== Distribution layout ==="
 find "$DIST_DIR" -type f | sort
+
+if [ "$OS" = "linux" ] && command -v readelf >/dev/null 2>&1; then
+  if readelf -rW "$DIST_DIR/lib/libv8.a" | grep -Eq 'R_X86_64_TPOFF32|R_AARCH64_TLSLE'; then
+    echo "The V8 archive still contains local-exec TLS relocations" >&2
+    exit 1
+  fi
+fi
