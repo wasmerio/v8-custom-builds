@@ -42,12 +42,13 @@ else
   OS=$2
 fi
 
-ARM_CFI_ARG=""
+ARM_TOOLCHAIN_ARGS=""
 IS_CLANG=false
 if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
   # Ubuntu's native ARM assembler does not accept V8's BTI marker flag, and
-  # GCC 13 rejects V8's ARM NEON intrinsic conversions. Use Clang without BTI.
-  ARM_CFI_ARG='arm_control_flow_integrity = "none"'
+  # GCC 13 rejects V8's ARM NEON intrinsic conversions. Use the runner's native
+  # Clang without Chrome-only plugins or BTI.
+  ARM_TOOLCHAIN_ARGS='arm_control_flow_integrity = "none" clang_base_path = "/usr" clang_use_chrome_plugins = false'
   IS_CLANG=true
 fi
 
@@ -116,7 +117,7 @@ gn gen out/release --args="is_debug=false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
-  $ARM_CFI_ARG \
+  $ARM_TOOLCHAIN_ARGS \
   target_environment=\"device\" \
   "
 else
@@ -144,7 +145,7 @@ gn gen out/release --args="is_debug=false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
-  $ARM_CFI_ARG \
+  $ARM_TOOLCHAIN_ARGS \
   "
 fi
 
