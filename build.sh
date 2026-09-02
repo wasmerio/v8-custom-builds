@@ -43,9 +43,12 @@ else
 fi
 
 ARM_CFI_ARG=""
+IS_CLANG=false
 if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
-  # Ubuntu's native ARM assembler does not accept V8's BTI marker flag.
+  # Ubuntu's native ARM assembler does not accept V8's BTI marker flag, and
+  # GCC 13 rejects V8's ARM NEON intrinsic conversions. Use Clang without BTI.
   ARM_CFI_ARG='arm_control_flow_integrity = "none"'
+  IS_CLANG=true
 fi
 
 if [ ! -d "$DEPOT_TOOLS_DIR" ]
@@ -95,7 +98,7 @@ gn gen out/release --args="is_debug=false \
   use_custom_libcxx_for_host=false \
   use_sysroot=false \
   use_glib=false \
-  is_clang=false \
+  is_clang=$IS_CLANG \
   v8_expose_symbols=true \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
@@ -126,7 +129,7 @@ gn gen out/release --args="is_debug=false \
   use_custom_libcxx_for_host=false \
   use_sysroot=false \
   use_glib=false \
-  is_clang=false \
+  is_clang=$IS_CLANG \
   v8_expose_symbols=true \
   v8_optimized_debug=false \
   v8_enable_sandbox=false \
