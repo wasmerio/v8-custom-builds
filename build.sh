@@ -48,7 +48,7 @@ if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
   # Ubuntu's native ARM assembler does not accept V8's BTI marker flag, and
   # GCC 13 rejects V8's ARM NEON intrinsic conversions. Use the runner's native
   # Clang without Chrome-only plugins or BTI.
-  ARM_TOOLCHAIN_ARGS='arm_control_flow_integrity = "none" clang_base_path = "/usr" clang_use_chrome_plugins = false'
+  ARM_TOOLCHAIN_ARGS='arm_control_flow_integrity = "none" clang_base_path = "/usr/lib/llvm-18" clang_version = "18" clang_use_chrome_plugins = false'
   IS_CLANG=true
 fi
 

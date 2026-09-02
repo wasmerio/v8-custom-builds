@@ -1,0 +1,21 @@
+From: Wasmer Engineering <engineering@wasmer.io>
+Subject: [PATCH] Use system Clang runtime layout on Linux ARM64
+
+Ubuntu packages compiler-rt under lib/linux with an architecture suffix,
+whereas Chromium's bundled toolchain uses a target-triple directory.
+
+diff --git a/build/config/clang/BUILD.gn b/build/config/clang/BUILD.gn
+--- a/build/config/clang/BUILD.gn
++++ b/build/config/clang/BUILD.gn
+@@ -201,6 +201,11 @@ template("clang_lib") {
+         } else {
+           assert(false)  # Unhandled cpu type
+         }
++      } else if ((is_linux || is_chromeos) && current_cpu == "arm64" &&
++                 clang_base_path != default_clang_base_path) {
++        # Ubuntu's system compiler-rt uses lib/linux plus an arch suffix.
++        _dir = "linux"
++        _suffix = "-aarch64"
+       } else if (is_linux || is_chromeos) {
+         if (current_cpu == "x64") {
+           _dir = "x86_64-unknown-linux-gnu"

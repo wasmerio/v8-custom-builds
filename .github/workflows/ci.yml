@@ -69,7 +69,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install ninja-build clang libglib2.0-dev -y
+          sudo apt-get install ninja-build clang-18 libclang-rt-18-dev libglib2.0-dev -y
 
       - name: Install dependencies on Alpine
         if: startsWith(matrix.target.id, 'linux-musl')
