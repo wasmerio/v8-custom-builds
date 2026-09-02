@@ -22,7 +22,7 @@ diff --git a/build/config/clang/BUILD.gn b/build/config/clang/BUILD.gn
 diff --git a/build/config/compiler/BUILD.gn b/build/config/compiler/BUILD.gn
 --- a/build/config/compiler/BUILD.gn
 +++ b/build/config/compiler/BUILD.gn
-@@ -628,6 +628,7 @@ config("compiler") {
+@@ -628,5 +628,6 @@ config("compiler") {
      # (excluding toolchains that use an older version of LLVM).
      if (is_linux && !llvm_android_mainline &&
 +        clang_base_path == default_clang_base_path &&
