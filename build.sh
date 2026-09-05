@@ -45,10 +45,15 @@ fi
 ARM_TOOLCHAIN_ARGS=""
 IS_CLANG=false
 if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
-  # Ubuntu's native ARM assembler does not accept V8's BTI marker flag, and
-  # GCC 13 rejects V8's ARM NEON intrinsic conversions. Use the runner's native
-  # Clang without Chrome-only plugins or BTI.
-  ARM_TOOLCHAIN_ARGS='arm_control_flow_integrity = "none" clang_base_path = "/usr/lib/llvm-18" clang_version = "18" clang_use_chrome_plugins = false'
+  # GCC rejects some of V8's ARM NEON intrinsic conversions. Use the native
+  # Clang toolchain without Chrome-only plugins or BTI. Release prebuilts run
+  # in manylinux_2_28 so they remain compatible with glibc 2.28 and newer.
+  if [ "${AUDITWHEEL_PLAT:-}" = "manylinux_2_28_aarch64" ]; then
+    CLANG_MAJOR_VERSION=$(clang -dumpversion | cut -d. -f1)
+    ARM_TOOLCHAIN_ARGS="arm_control_flow_integrity = \"none\" clang_base_path = \"/usr\" clang_version = \"$CLANG_MAJOR_VERSION\" clang_use_chrome_plugins = false"
+  else
+    ARM_TOOLCHAIN_ARGS='arm_control_flow_integrity = "none" clang_base_path = "/usr/lib/llvm-18" clang_version = "18" clang_use_chrome_plugins = false'
+  fi
   IS_CLANG=true
 fi
 
@@ -58,6 +63,7 @@ then
 fi
 
 export PATH="$PATH:$DEPOT_TOOLS_DIR"
+"$DEPOT_TOOLS_DIR/ensure_bootstrap"
 
 # Set up google's client and fetch v8
 if [ ! -d v8 ]
@@ -150,10 +156,15 @@ gn gen out/release --args="is_debug=false \
 fi
 
 # Showtime!
+NINJA_ARGS=()
+if [ -n "${NINJA_JOBS:-}" ]; then
+  NINJA_ARGS=(-j "$NINJA_JOBS")
+fi
+
 if [ "$OS" == "ios" ]; then
-  ninja -C out/release v8_monolith
+  ninja "${NINJA_ARGS[@]}" -C out/release v8_monolith
 else
-  ninja -C out/release wee8
+  ninja "${NINJA_ARGS[@]}" -C out/release wee8
 fi
 
 ls -laR out/release/obj
@@ -189,6 +200,12 @@ find "$DIST_DIR" -type f | sort
 if [ "$OS" = "linux" ] && command -v readelf >/dev/null 2>&1; then
   if readelf -rW "$DIST_DIR/lib/libv8.a" | grep -Eq 'R_X86_64_TPOFF32|R_AARCH64_TLSLE'; then
     echo "The V8 archive still contains local-exec TLS relocations" >&2
+    exit 1
+  fi
+
+  if nm -u "$DIST_DIR/lib/libv8.a" | grep -q '__isoc23_'; then
+    echo "The V8 archive requires glibc 2.38 C23 symbols" >&2
+    nm -u "$DIST_DIR/lib/libv8.a" | grep '__isoc23_' | sort -u >&2
     exit 1
   fi
 fi
