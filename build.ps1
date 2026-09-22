@@ -6,7 +6,7 @@ $DEPOT_TOOLS_REPO="https://chromium.googlesource.com/chromium/tools/depot_tools.
 $V8_TAG="13.6.233.17"
 
 # Clone depot-tools
-if (-not (Test-Path -Path "depot_tools" -PathType Container)) {
+if (-not (Test-Path -Path "C:\tmp\depot_tools" -PathType Container)) {
   git clone --single-branch --depth=1 "$DEPOT_TOOLS_REPO" "C:\tmp\depot_tools"
 }
 
@@ -34,7 +34,7 @@ python3 build/util/lastchange.py -o build/util/LASTCHANGE
 # Apply patches (--ignore-whitespace handles CRLF differences on Windows)
 $files = Get-ChildItem "../patches" -Filter *.patch
 foreach ($f in $files){
-  git apply --ignore-whitespace $f
+  git apply --ignore-whitespace "../patches/$($f.Name)"
 }
 
 # Write args.gn directly to avoid PowerShell quote-stripping issues
@@ -59,7 +59,7 @@ v8_enable_short_builtin_calls = true
 treat_warnings_as_errors = false
 target_cpu = "x64"
 v8_target_cpu = "x64"
-'@ | Set-Content -Path "out\release\args.gn" -Encoding utf8
+'@ | Set-Content -Path "out\release\args.gn" -Encoding ascii
 gn gen out/release
 
 # Showtime!
@@ -74,13 +74,13 @@ New-Item -ItemType Directory -Force -Path "$DIST_DIR\include"
 New-Item -ItemType Directory -Force -Path "$DIST_DIR\include\wasm-c-api"
 New-Item -ItemType Directory -Force -Path "$DIST_DIR\lib"
 
-# Copy V8 public headers (preserving subdirectory structure)
-Copy-Item -Recurse -Path "include\*" -Destination "$DIST_DIR\include\" -Include "*.h"
-# Copy subdirectories with headers
-Get-ChildItem -Path "include" -Directory | ForEach-Object {
-    $dest = "$DIST_DIR\include\$($_.Name)"
-    if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest }
-    Copy-Item -Recurse -Path "$($_.FullName)\*" -Destination $dest -Filter "*.h"
+# Copy V8 public headers, retaining their path relative to include (at any depth).
+$includeSource = (Resolve-Path "include").Path
+Get-ChildItem -Path $includeSource -Recurse -File -Filter "*.h" | ForEach-Object {
+    $relativePath = $_.FullName.Substring($includeSource.Length).TrimStart("\", "/")
+    $destination = Join-Path "$DIST_DIR\include" $relativePath
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $_.FullName -Destination $destination
 }
 
 # Copy the patched wasm C API header
