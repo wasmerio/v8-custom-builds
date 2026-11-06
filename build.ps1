@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
 $DEPOT_TOOLS_REPO="https://chromium.googlesource.com/chromium/tools/depot_tools.git"
-$V8_TAG="15.9.111
+$V8_TAG="15.9.111"
 
 # Clone depot-tools
 if (-not (Test-Path -Path "depot_tools" -PathType Container)) {
