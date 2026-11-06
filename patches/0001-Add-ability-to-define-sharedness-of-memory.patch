@@ -19,17 +19,16 @@ index 9d59c97e225..4ad54f3f6cb 100644
                          ? v8::base::checked_cast<int32_t>(memory.maximum_pages)
 -                        : -1);
 +                        : -1,
-+                    memory.is_shared);
++                    memory.is_shared.value());
        return MemoryType::make(limits);
      }
      case i::wasm::kExternalGlobal: {
-@@ -2284,7 +2285,8 @@ WASM_EXPORT auto Memory::make(Store* store_abs, const MemoryType* type)
+@@ -2284,7 +2285,7 @@ WASM_EXPORT auto Memory::make(Store* store_abs, const MemoryType* type)
      if (maximum > i::wasm::kSpecMaxMemory32Pages) return nullptr;
    }
    // TODO(wasm+): Support shared memory and memory64.
--  i::SharedFlag shared = i::SharedFlag::kNotShared;
-+  i::SharedFlag shared =
-+      limits.shared ? i::SharedFlag::kShared : i::SharedFlag::kNotShared;
+-  i::SharedFlag shared = i::SharedFlag{false};
++  i::SharedFlag shared = i::SharedFlag{limits.shared};
    i::wasm::AddressType address_type = i::wasm::AddressType::kI32;
    i::DirectHandle<i::WasmMemoryObject> memory_obj;
    if (!i::WasmMemoryObject::New(isolate, minimum, maximum, shared, address_type)
@@ -39,7 +38,7 @@ index 9d59c97e225..4ad54f3f6cb 100644
        memory->has_maximum_pages() ? memory->maximum_pages() : 0xFFFFFFFFu;
 -  return MemoryType::make(Limits(min, max));
 +  return MemoryType::make(
-+      Limits(min, max, memory->array_buffer()->is_shared()));
++      Limits(min, max, memory->backing_store()->is_shared().value()));
  }
  
  WASM_EXPORT auto Memory::data() const -> byte_t* {

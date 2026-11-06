@@ -3,3 +3,4 @@
 .DS_Store
 v8/*
 /v8
+/.cipd

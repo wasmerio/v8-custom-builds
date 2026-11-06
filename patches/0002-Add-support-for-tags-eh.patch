@@ -21,7 +21,7 @@ index 8650fb3549b..15fceadff2e 100644
  
  #ifdef V8_OS_WIN
  
-@@ -221,7 +222,16 @@ own<ExternType> GetImportExportType(const i::wasm::WasmModule* module,
+@@ -221,8 +222,17 @@ own<ExternType> GetImportExportType(const i::wasm::WasmModule* module,
        return GlobalType::make(std::move(content), mutability);
      }
      case i::wasm::kExternalTag:
@@ -37,15 +37,17 @@ index 8650fb3549b..15fceadff2e 100644
 +
 +      return TagType::make(std::move(params));
    }
+   UNREACHABLE();
  }
  
-@@ -662,6 +672,8 @@ WASM_EXPORT auto ExternType::copy() const -> own<ExternType> {
+@@ -662,7 +672,9 @@ WASM_EXPORT auto ExternType::copy() const -> own<ExternType> {
        return table()->copy();
      case ExternKind::MEMORY:
        return memory()->copy();
 +    case ExternKind::TAG:
 +      return tag()->copy();
    }
+   UNREACHABLE();
  }
  
 @@ -772,6 +784,48 @@ auto ExternType::global() const -> const GlobalType* {
@@ -137,7 +139,7 @@ index 8650fb3549b..15fceadff2e 100644
  WASM_EXPORT auto Extern::table() const -> const Table* {
    return kind() == ExternKind::TABLE ? static_cast<const Table*>(this)
                                       : nullptr;
-@@ -2103,6 +2167,62 @@ WASM_EXPORT void Global::set(const Val& val) {
+@@ -2103,6 +2167,65 @@ WASM_EXPORT void Global::set(const Val& val) {
    }
  }
  
@@ -186,12 +188,15 @@ index 8650fb3549b..15fceadff2e 100644
 +
 +WASM_EXPORT auto Tag::type() const -> own<TagType> {
 +  i::DirectHandle<i::WasmTagObject> v8_tag = impl(this)->v8_object();
-+  auto v8_params = v8_tag->serialized_signature();
-+  auto param_count = v8_params->length();
++  const i::wasm::CanonicalSig* sig =
++      i::wasm::GetTypeCanonicalizer()->LookupFunctionSignature(
++          i::wasm::CanonicalTypeIndex{
++              static_cast<uint32_t>(v8_tag->canonical_type_index())});
++  auto param_count = sig->parameter_count();
 +  ownvec<ValType> params = ownvec<ValType>::make_uninitialized(param_count);
 +
-+  for (int i = 0; i < param_count; i++) {
-+    params[i] = ValType::make(V8ValueTypeToWasm(v8_params->get(i)));
++  for (size_t i = 0; i < param_count; i++) {
++    params[i] = ValType::make(V8ValueTypeToWasm(sig->GetParam(i)));
 +  }
 +
 +  return TagType::make(std::move(params));
