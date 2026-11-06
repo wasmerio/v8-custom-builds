@@ -85,7 +85,8 @@ jobs:
           git clone https://gn.googlesource.com/gn /tmp/gn
           cd /tmp/gn
           git checkout ed7fee04cb30b96ed40ef188acfad5417349e399
-          python3 build/gen.py
+          # Explicit CXX skips GN's CIPD-managed (glibc) toolchain.
+          CXX=clang++ python3 build/gen.py
           ninja -C out
           install -m 0755 out/gn /usr/local/bin/gn
 
