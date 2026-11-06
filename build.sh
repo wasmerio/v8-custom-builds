@@ -124,6 +124,7 @@ gn gen out/release --args="is_debug=false \
   v8_enable_pointer_compression = true \
   v8_enable_short_builtin_calls = true \
   v8_monolithic = true \
+  v8_enable_temporal_support = false \
   ios_enable_code_signing = false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
@@ -153,6 +154,7 @@ gn gen out/release --args="is_debug=false \
   v8_enable_fast_mksnapshot = true \
   v8_enable_handle_zapping = false \
   v8_enable_pointer_compression = true \
+  v8_enable_temporal_support = false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
