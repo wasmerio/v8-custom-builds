@@ -1,0 +1,10 @@
+From: Wasmer Engineering <engineering@wasmer.io>
+Subject: [PATCH] Include size_t explicitly for system libstdc++
+
+diff --git a/third_party/partition_alloc/src/partition_alloc/internal_allocator_forward.h b/third_party/partition_alloc/src/partition_alloc/internal_allocator_forward.h
+--- a/third_party/partition_alloc/src/partition_alloc/internal_allocator_forward.h
++++ b/third_party/partition_alloc/src/partition_alloc/internal_allocator_forward.h
+@@ -8,2 +8,3 @@
++#include <stddef.h>
+ #include <new>
+ #include <type_traits>

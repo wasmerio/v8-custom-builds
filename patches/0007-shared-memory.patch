@@ -2,7 +2,7 @@ diff --git i/src/wasm/c-api.cc w/src/wasm/c-api.cc
 index ddb7fa93369..fadf87287d1 100644
 --- i/src/wasm/c-api.cc
 +++ w/src/wasm/c-api.cc
-@@ -2405,12 +2405,79 @@ struct implement<Memory> {
+@@ -2405,12 +2405,62 @@ struct implement<Memory> {
    using type = RefImpl<Memory, i::WasmMemoryObject>;
  };
  
@@ -16,20 +16,6 @@ index ddb7fa93369..fadf87287d1 100644
 +struct implement<Shared<Memory>> {
 +  using type = SharedMemoryData;
 +};
-+
-+namespace {
-+
-+void UpdateSharedWasmMemoryIfNeeded(i::Isolate* isolate,
-+                                    i::Tagged<i::WasmMemoryObject> memory) {
-+  i::Tagged<i::JSArrayBuffer> buffer = memory->array_buffer();
-+  if (!buffer->is_shared()) return;
-+  std::shared_ptr<i::BackingStore> backing_store = buffer->GetBackingStore();
-+  if (backing_store && backing_store->is_wasm_memory()) {
-+    backing_store->UpdateSharedWasmMemoryObjects(isolate);
-+  }
-+}
-+
-+}  // namespace
 +
  WASM_EXPORT void Memory::destroy() { delete impl(this); }
  
@@ -46,11 +32,10 @@ index ddb7fa93369..fadf87287d1 100644
 +  i::HandleScope handle_scope(isolate);
 +
 +  i::DirectHandle<i::WasmMemoryObject> memory = impl(this)->v8_object();
-+  i::Tagged<i::JSArrayBuffer> buffer = memory->array_buffer();
-+  if (!buffer->is_shared()) return own<Shared<Memory>>();
++  if (!memory->backing_store()->is_shared()) return own<Shared<Memory>>();
 +
 +  auto shared = std::make_unique<SharedMemoryData>();
-+  shared->backing_store = buffer->GetBackingStore();
++  shared->backing_store = memory->backing_store().as_shared_ptr();
 +  shared->maximum_pages =
 +      memory->has_maximum_pages() ? memory->maximum_pages() : i::WasmMemoryObject::kNoMaximum;
 +  shared->address_type = memory->address_type();
@@ -71,54 +56,15 @@ index ddb7fa93369..fadf87287d1 100644
 +    return own<Memory>();
 +  }
 +
-+  i::DirectHandle<i::JSArrayBuffer> buffer =
-+      isolate->factory()->NewJSSharedArrayBuffer(shared_data->backing_store);
 +  i::DirectHandle<i::WasmMemoryObject> memory =
-+      i::WasmMemoryObject::New(isolate, buffer, shared_data->maximum_pages,
-+                               shared_data->address_type);
++      i::WasmMemoryObject::New(isolate, {}, shared_data->backing_store,
++                               shared_data->maximum_pages, shared_data->address_type);
 +  return implement<Memory>::type::make(store, memory);
 +}
 +
  WASM_EXPORT auto Memory::make(Store* store_abs, const MemoryType* type)
      -> own<Memory> {
    StoreImpl* store = impl(store_abs);
-@@ -2442,8 +2509,11 @@ WASM_EXPORT auto Memory::make(Store* store_abs, const MemoryType* type)
- }
- 
- WASM_EXPORT auto Memory::type() const -> own<MemoryType> {
--  PtrComprCageAccessScope ptr_compr_cage_access_scope(impl(this)->isolate());
-+  i::Isolate* isolate = impl(this)->isolate();
-+  v8::Isolate::Scope isolate_scope(reinterpret_cast<v8::Isolate*>(isolate));
-+  PtrComprCageAccessScope ptr_compr_cage_access_scope(isolate);
-   i::DirectHandle<i::WasmMemoryObject> memory = impl(this)->v8_object();
-+  UpdateSharedWasmMemoryIfNeeded(isolate, *memory);
-   uint32_t min = static_cast<uint32_t>(memory->array_buffer()->byte_length() /
-                                        i::wasm::kWasmPageSize);
-   uint32_t max =
-@@ -2456,6 +2526,7 @@ WASM_EXPORT auto Memory::data() const -> byte_t* {
-   i::Isolate* isolate = impl(this)->isolate();
-   v8::Isolate::Scope isolate_scope(reinterpret_cast<v8::Isolate*>(isolate));
-   PtrComprCageAccessScope ptr_compr_cage_access_scope(isolate);
-+  UpdateSharedWasmMemoryIfNeeded(isolate, *impl(this)->v8_object());
-   return reinterpret_cast<byte_t*>(
-       impl(this)->v8_object()->array_buffer()->backing_store());
- }
-@@ -2464,6 +2535,7 @@ WASM_EXPORT auto Memory::data_size() const -> size_t {
-   i::Isolate* isolate = impl(this)->isolate();
-   v8::Isolate::Scope isolate_scope(reinterpret_cast<v8::Isolate*>(isolate));
-   PtrComprCageAccessScope ptr_compr_cage_access_scope(isolate);
-+  UpdateSharedWasmMemoryIfNeeded(isolate, *impl(this)->v8_object());
-   return impl(this)->v8_object()->array_buffer()->byte_length();
- }
- 
-@@ -2471,6 +2543,7 @@ WASM_EXPORT auto Memory::size() const -> pages_t {
-   i::Isolate* isolate = impl(this)->isolate();
-   v8::Isolate::Scope isolate_scope(reinterpret_cast<v8::Isolate*>(isolate));
-   PtrComprCageAccessScope ptr_compr_cage_access_scope(isolate);
-+  UpdateSharedWasmMemoryIfNeeded(isolate, *impl(this)->v8_object());
-   return static_cast<pages_t>(
-       impl(this)->v8_object()->array_buffer()->byte_length() /
-       i::wasm::kWasmPageSize);
 @@ -3592,7 +3665,7 @@ bool wasm_table_grow(wasm_table_t* table, wasm_table_size_t delta,
  
  // Memory Instances

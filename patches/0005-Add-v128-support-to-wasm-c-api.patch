@@ -10,7 +10,7 @@ index 1b4cbdbdf45..4bfe807245a 100644
 +      return ValKind::V128;
      case i::wasm::kRef:
      case i::wasm::kRefNull:
-       switch (v8_valtype.heap_representation()) {
+       switch (v8_valtype.generic_kind()) {
 @@ -154,6 +156,8 @@ i::wasm::ValueType WasmValKindToV8(ValKind kind) {
        return i::wasm::kWasmF32;
      case ValKind::F64:
@@ -39,7 +39,7 @@ index 1b4cbdbdf45..4bfe807245a 100644
        valtype = valtype_externref;
        break;
 @@ -1715,8 +1723,8 @@ void PushArgs(const i::wasm::CanonicalSig* sig, const vec<Val>& args,
-         packer->Push((*WasmRefToV8(store->i_isolate(), args[i].ref())).ptr());
+                          .ptr());
          break;
        case i::wasm::kS128:
 -        // TODO(14034): Implement.
@@ -50,41 +50,39 @@ index 1b4cbdbdf45..4bfe807245a 100644
        case i::wasm::kI16:
        case i::wasm::kF16:
 @@ -1756,8 +1764,8 @@ void PopArgs(const i::wasm::CanonicalSig* sig, vec<Val>& results,
-         break;
-       }
-       case i::wasm::kS128:
--        // TODO(14034): Implement.
--        UNIMPLEMENTED();
-+        results[i] = Val(packer->Pop<v128_t>());
-+        break;
-       case i::wasm::kI8:
-       case i::wasm::kI16:
-       case i::wasm::kF16:
+           break;
+         }
+         case i::wasm::kS128:
+-          // TODO(14034): Implement.
+-          UNIMPLEMENTED();
++          results[i] = Val(packer->Pop<v128_t>());
++          break;
+         case i::wasm::kI8:
+         case i::wasm::kI16:
+         case i::wasm::kF16:
 @@ -1923,6 +1931,10 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
-         params[i] = Val(v8::base::ReadUnalignedValue<float64_t>(p));
-         p += 8;
-         break;
-+      case ValKind::V128:
-+        params[i] = Val(v8::base::ReadUnalignedValue<v128_t>(p));
-+        p += 16;
-+        break;
-       case ValKind::EXTERNREF:
-       case ValKind::FUNCREF: {
-         i::Address raw = v8::base::ReadUnalignedValue<i::Address>(p);
-@@ -1967,6 +1979,10 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
-         v8::base::WriteUnalignedValue(p, results[i].f64());
-         p += 8;
-         break;
-+      case ValKind::V128:
-+        v8::base::WriteUnalignedValue(p, results[i].v128());
-+        p += 16;
-+        break;
-       case ValKind::EXTERNREF:
-       case ValKind::FUNCREF: {
-         v8::base::WriteUnalignedValue(
-@@ -2056,9 +2072,12 @@ WASM_EXPORT auto Global::get() const -> Val {
-       }
-       return Val(V8RefValueToWasm(store, result));
+           params[i] = Val(v8::base::ReadUnalignedValue<float64_t>(p));
+           p += 8;
+           break;
++        case ValKind::V128:
++          params[i] = Val(v8::base::ReadUnalignedValue<v128_t>(p));
++          p += 16;
++          break;
+         case ValKind::EXTERNREF:
+         case ValKind::FUNCREF: {
+           i::Address raw = v8::base::ReadUnalignedValue<i::Address>(p);
+@@ -1967,5 +1979,9 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
+           v8::base::WriteUnalignedValue(p, results[i].f64());
+           p += 8;
+           break;
++        case ValKind::V128:
++          v8::base::WriteUnalignedValue(p, results[i].v128());
++          p += 16;
++          break;
+         case ValKind::EXTERNREF:
+         case ValKind::FUNCREF: {
+@@ -2056,8 +2072,11 @@ WASM_EXPORT auto Global::get() const -> Val {
+       return Val(V8RefValueToWasm(store, v8_global->GetRef()));
      }
 -    case i::wasm::kS128:
 -      // TODO(14034): Implement these.
@@ -98,7 +96,7 @@ index 1b4cbdbdf45..4bfe807245a 100644
      case i::wasm::kI8:
      case i::wasm::kI16:
      case i::wasm::kF16:
-@@ -2081,6 +2100,12 @@ WASM_EXPORT void Global::set(const Val& val) {
+@@ -2081,5 +2100,11 @@ WASM_EXPORT void Global::set(const Val& val) {
        return v8_global->SetF32(val.f32());
      case ValKind::F64:
        return v8_global->SetF64(val.f64());
@@ -109,8 +107,7 @@ index 1b4cbdbdf45..4bfe807245a 100644
 +      return;
 +    }
      case ValKind::EXTERNREF:
-       return v8_global->SetRef(
-           WasmRefToV8(impl(this)->store()->i_isolate(), val.ref()));
+     case ValKind::FUNCREF: {
 @@ -3036,6 +3061,9 @@ inline auto hide_val(wasm::Val v) -> wasm_val_t {
      case wasm::ValKind::F64:
        v2.of.f64 = v.f64();

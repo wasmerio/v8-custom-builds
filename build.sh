@@ -8,7 +8,7 @@ set -x
 DEPOT_TOOLS_REPO="https://chromium.googlesource.com/chromium/tools/depot_tools.git"
 DEPOT_TOOLS_DIR="/tmp/depot_tools"
 
-V8_TAG=${V8_TAG:-"13.6.233.17"}
+V8_TAG=${V8_TAG:-"15.9.111"}
 
 if [ -z "$1" ]; then 
   case $(uname -m) in
@@ -65,10 +65,14 @@ fi
 export PATH="$PATH:$DEPOT_TOOLS_DIR"
 "$DEPOT_TOOLS_DIR/ensure_bootstrap"
 
-# Set up google's client and fetch v8
-if [ ! -d v8 ]
-then 
-  fetch v8
+# Set up Google's client, including when reusing a standalone V8 checkout.
+if [ ! -d v8 ] || [ ! -f .gclient ]
+then
+  if [ ! -d v8 ]; then
+    fetch v8
+  else
+    gclient config --name v8 --unmanaged https://chromium.googlesource.com/v8/v8.git
+  fi
   if [ "$OS" == "android" ] 
   then
 	echo "target_os = [\"android\"];" >> .gclient
@@ -83,6 +87,7 @@ fi
 
 cd v8
 git reset --hard
+gclient recurse --scm=git -- git reset --hard
 git checkout "$V8_TAG"
 # Sync deps without hooks to avoid downloading unnecessary test data
 # (wasm-spec-tests, wasm-js) which can fail on musl/Alpine due to gsutil issues.

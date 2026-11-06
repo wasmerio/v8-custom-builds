@@ -8,9 +8,9 @@ diff --git a/build/config/clang/BUILD.gn b/build/config/clang/BUILD.gn
 --- a/build/config/clang/BUILD.gn
 +++ b/build/config/clang/BUILD.gn
 @@ -201,6 +201,15 @@ template("clang_lib") {
-         } else {
-           assert(false)  # Unhandled cpu type
          }
+       } else if (is_apple) {
+         _dir = "darwin"
 +      } else if ((is_linux || is_chromeos) && current_cpu == "arm64" &&
 +                 clang_base_path == "/usr") {
 +        # AlmaLinux's system compiler-rt uses the Red Hat target triple.
@@ -26,10 +26,9 @@ diff --git a/build/config/clang/BUILD.gn b/build/config/clang/BUILD.gn
 diff --git a/build/config/compiler/BUILD.gn b/build/config/compiler/BUILD.gn
 --- a/build/config/compiler/BUILD.gn
 +++ b/build/config/compiler/BUILD.gn
-@@ -628,5 +628,6 @@ config("compiler") {
-     # (excluding toolchains that use an older version of LLVM).
-     if (is_linux && !llvm_android_mainline &&
-+        clang_base_path == default_clang_base_path &&
-         default_toolchain != "//build/toolchain/cros:target") {
+@@ -683,3 +683,4 @@ config("compiler") {
+-    if (is_linux && use_lld && current_cpu != "arm" && current_cpu != "s390x") {
++    if (is_linux && use_lld && current_cpu != "arm" && current_cpu != "s390x" &&
++        clang_base_path == default_clang_base_path) {
        cflags += [ "-Wa,--crel,--allow-experimental-crel" ]
      }
