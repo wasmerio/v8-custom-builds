@@ -20,7 +20,8 @@ jobs:
           - id: 'linux-musl'
             os: 'ubuntu-22.04'
             native: true
-            container: alpine:3.24
+            # gsutil supports Python 3.9–3.13; Alpine 3.24 ships Python 3.14.
+            container: alpine:3.23
           - id: 'darwin-amd64'
             os: 'macos-15-intel'
             native: true
