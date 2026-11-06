@@ -105,6 +105,8 @@ for patch in ../patches/*.patch; do
   git apply "$patch"
 done
 
+# Keep both Rust-backed integrations disabled: V8's Linux Rust prebuilt is
+# x86-64-only and cannot run on native ARM64. Intl still uses the bundled ICU.
 if [ "$OS" == "ios" ]
 then
 gn gen out/release --args="is_debug=false \
@@ -132,6 +134,7 @@ gn gen out/release --args="is_debug=false \
   v8_monolithic = true \
   v8_deprecation_warnings = false \
   v8_enable_temporal_support = false \
+  v8_enable_ecma402_icu4x = false \
   ios_enable_code_signing = false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
@@ -163,6 +166,7 @@ gn gen out/release --args="is_debug=false \
   v8_enable_pointer_compression = true \
   v8_deprecation_warnings = false \
   v8_enable_temporal_support = false \
+  v8_enable_ecma402_icu4x = false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
