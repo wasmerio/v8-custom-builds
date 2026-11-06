@@ -42,19 +42,25 @@ else
   OS=$2
 fi
 
-ARM_TOOLCHAIN_ARGS=""
+LINUX_TOOLCHAIN_ARGS=""
 IS_CLANG=false
-if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
+if [ "$OS" = "linux" ]; then
+  IS_CLANG=true
+fi
+if [ "$OS" = "linux" ] && [ -f /etc/alpine-release ]; then
+  # Use Alpine's native musl toolchain rather than glibc-linked prebuilts.
+  CLANG_MAJOR_VERSION=$(clang -dumpversion | cut -d. -f1)
+  LINUX_TOOLCHAIN_ARGS="clang_base_path = \"/usr\" clang_version = \"$CLANG_MAJOR_VERSION\" clang_use_chrome_plugins = false"
+elif [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
   # GCC rejects some of V8's ARM NEON intrinsic conversions. Use the native
   # Clang toolchain without Chrome-only plugins or BTI. Release prebuilts run
   # in manylinux_2_28 so they remain compatible with glibc 2.28 and newer.
   if [ "${AUDITWHEEL_PLAT:-}" = "manylinux_2_28_aarch64" ]; then
     CLANG_MAJOR_VERSION=$(clang -dumpversion | cut -d. -f1)
-    ARM_TOOLCHAIN_ARGS="arm_control_flow_integrity = \"none\" clang_base_path = \"/usr\" clang_version = \"$CLANG_MAJOR_VERSION\" clang_use_chrome_plugins = false"
+    LINUX_TOOLCHAIN_ARGS="arm_control_flow_integrity = \"none\" clang_base_path = \"/usr\" clang_version = \"$CLANG_MAJOR_VERSION\" clang_use_chrome_plugins = false"
   else
-    ARM_TOOLCHAIN_ARGS='arm_control_flow_integrity = "none" clang_base_path = "/usr/lib/llvm-18" clang_version = "18" clang_use_chrome_plugins = false'
+    LINUX_TOOLCHAIN_ARGS='arm_control_flow_integrity = "none" clang_base_path = "/usr/lib/llvm-18" clang_version = "18" clang_use_chrome_plugins = false'
   fi
-  IS_CLANG=true
 fi
 
 if [ ! -d "$DEPOT_TOOLS_DIR" ]
@@ -130,7 +136,7 @@ gn gen out/release --args="is_debug=false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
-  $ARM_TOOLCHAIN_ARGS \
+  $LINUX_TOOLCHAIN_ARGS \
   target_environment=\"device\" \
   "
 else
@@ -160,7 +166,7 @@ gn gen out/release --args="is_debug=false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
-  $ARM_TOOLCHAIN_ARGS \
+  $LINUX_TOOLCHAIN_ARGS \
   "
 fi
 
