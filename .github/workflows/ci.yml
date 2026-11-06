@@ -20,7 +20,7 @@ jobs:
           - id: 'linux-musl'
             os: 'ubuntu-22.04'
             native: true
-            container: alpine:3.21
+            container: alpine:3.24
           - id: 'darwin-amd64'
             os: 'macos-15-intel'
             native: true
@@ -124,7 +124,7 @@ jobs:
         if: matrix.target.id == 'linux-musl'
         shell: bash
         run: |
-          CXX=clang++-18 ./build.sh
+          CXX=clang++ ./build.sh
         env:
           VPYTHON_BYPASS: "manually managed python not supported by chrome operations"
           DEPOT_TOOLS_BOOTSTRAP_PYTHON3: "0"
