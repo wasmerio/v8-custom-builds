@@ -63,8 +63,8 @@ v8_target_cpu = "x64"
 '@ | Set-Content -Path "out\release\args.gn" -Encoding utf8
 gn gen out/release
 
-# Showtime!
-ninja -C out/release wee8
+# Use the DEPS-pinned Chromium Ninja downloaded by gclient sync.
+& .\third_party\ninja\ninja.exe -C out/release wee8
 
 Get-ChildItem -Recurse out/release/obj
 

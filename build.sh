@@ -164,6 +164,10 @@ gn gen out/release --args="is_debug=false \
   "
 fi
 
+# Chromium's Rust rules use multi-output depslog support that upstream Ninja
+# lacks. Always use the DEPS-pinned Chromium Ninja downloaded by gclient sync.
+NINJA=./third_party/ninja/ninja
+
 # Showtime!
 NINJA_ARGS=()
 if [ -n "${NINJA_JOBS:-}" ]; then
@@ -171,9 +175,9 @@ if [ -n "${NINJA_JOBS:-}" ]; then
 fi
 
 if [ "$OS" == "ios" ]; then
-  ninja "${NINJA_ARGS[@]}" -C out/release v8_monolith
+  "$NINJA" "${NINJA_ARGS[@]}" -C out/release v8_monolith
 else
-  ninja "${NINJA_ARGS[@]}" -C out/release wee8
+  "$NINJA" "${NINJA_ARGS[@]}" -C out/release wee8
 fi
 
 ls -laR out/release/obj

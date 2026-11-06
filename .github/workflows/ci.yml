@@ -78,7 +78,8 @@ jobs:
       - name: Install dependencies on Alpine
         if: startsWith(matrix.target.id, 'linux-musl')
         run: |
-          apk add ninja bash git cmake clang-dev llvm-dev wget python3 alpine-sdk curl git tar xz py3-virtualenv py3-google-auth-httplib2 py3-httplib2 py3-distutils-extra py3-setuptools py3-pip py3-six gn
+          # Chromium's bundled Ninja is linked against glibc.
+          apk add gcompat libstdc++ bash git cmake clang-dev llvm-dev wget python3 alpine-sdk curl git tar xz py3-virtualenv py3-google-auth-httplib2 py3-httplib2 py3-distutils-extra py3-setuptools py3-pip py3-six gn
 
       - name: Install dependencies on macOS
         if: startsWith(matrix.target.id, 'darwin-') || matrix.target.id == 'ios'
