@@ -80,7 +80,14 @@ jobs:
         if: startsWith(matrix.target.id, 'linux-musl')
         run: |
           # Chromium's bundled Ninja is linked against glibc.
-          apk add gcompat libstdc++ bash git cmake clang-dev llvm-dev lld wget python3 alpine-sdk curl git tar xz py3-virtualenv py3-google-auth-httplib2 py3-httplib2 py3-distutils-extra py3-setuptools py3-pip py3-six gn
+          apk add gcompat libstdc++ bash git cmake clang-dev llvm-dev lld wget python3 alpine-sdk curl git tar xz py3-virtualenv py3-google-auth-httplib2 py3-httplib2 py3-distutils-extra py3-setuptools py3-pip py3-six ninja
+          # Build V8's pinned GN revision natively for musl.
+          git clone https://gn.googlesource.com/gn /tmp/gn
+          cd /tmp/gn
+          git checkout ed7fee04cb30b96ed40ef188acfad5417349e399
+          python3 build/gen.py
+          ninja -C out
+          install -m 0755 out/gn /usr/local/bin/gn
 
       - name: Install dependencies on macOS
         if: startsWith(matrix.target.id, 'darwin-') || matrix.target.id == 'ios'
