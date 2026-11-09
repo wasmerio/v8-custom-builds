@@ -74,9 +74,27 @@ jobs:
         run: |
           choco install ninja
 
+      - name: Install Windows SDK required by V8
+        if: matrix.target.id == 'windows-amd64'
+        shell: pwsh
+        run: |
+          # V8 pins SDK 10.0.28000.0; use the 10.0.28000.2270 installer.
+          $installer = Join-Path $env:RUNNER_TEMP 'winsdksetup.exe'
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/?linkid=2370315' -OutFile $installer
+          $process = Start-Process -FilePath $installer -ArgumentList '/quiet', '/norestart', '/features', 'OptionId.DesktopCPPx64', 'OptionId.DesktopCPPx86', 'OptionId.WindowsDesktopDebuggers' -Wait -PassThru
+          if ($process.ExitCode -notin @(0, 3010)) {
+            throw "Windows SDK installation failed with exit code $($process.ExitCode)"
+          }
+          $sdk = "${env:ProgramFiles(x86)}\Windows Kits\10"
+          if (-not (Test-Path "$sdk\Include\10.0.28000.0\um\Windows.h")) {
+            throw 'Windows SDK 10.0.28000.0 headers were not installed'
+          }
+
       - name: Setup MSVC (Windows) 
         uses: ilammy/msvc-dev-cmd@v1
         if: matrix.target.id == 'windows-amd64'
+        with:
+          sdk: '10.0.28000.0'
 
       - name: Build (native target) 
         if: matrix.target.id != 'windows-amd64' && matrix.target.native == true
