@@ -44,7 +44,7 @@ fi
 
 USE_SYSROOT=false
 IS_CLANG=false
-if [ "$OS" = "linux" ]; then
+if [ "$OS" = "linux" ] || [ "$OS" = "mac" ]; then
   IS_CLANG=true
 fi
 if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
