@@ -38,4 +38,6 @@ Cross-compile on an x86-64 Linux host using V8/Chromium's bundled Clang:
 
 The script installs Chromium's pinned ARM64 and host Debian sysroots and sets
 `target_cpu="arm64"`, `v8_target_cpu="arm64"`, and `use_sysroot=true`.
+It uses Chromium's bundled libc++ for both target code and host tools because
+Bullseye's libstdc++ headers do not provide the C++20 features required by V8.
 No native ARM64 runner, QEMU, or system cross-compiler is required.

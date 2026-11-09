@@ -43,14 +43,17 @@ else
 fi
 
 USE_SYSROOT=false
+USE_CUSTOM_LIBCXX=false
 IS_CLANG=false
 if [ "$OS" = "linux" ] || [ "$OS" = "mac" ]; then
   IS_CLANG=true
 fi
 if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
   # Use Chromium's bundled Clang cross-compiler and Debian sysroots rather
-  # than a native ARM64 system compiler.
+  # than a native ARM64 system compiler. Bullseye's libstdc++ lacks the
+  # C++20 headers V8 needs, so use bundled libc++ for target and host tools.
   USE_SYSROOT=true
+  USE_CUSTOM_LIBCXX=true
 fi
 
 if [ ! -d "$DEPOT_TOOLS_DIR" ]
@@ -145,8 +148,8 @@ gn gen out/release --args="is_debug=false \
   symbol_level = 0 \
   is_component_build=false \
   is_official_build=false \
-  use_custom_libcxx=false \
-  use_custom_libcxx_for_host=false \
+  use_custom_libcxx=$USE_CUSTOM_LIBCXX \
+  use_custom_libcxx_for_host=$USE_CUSTOM_LIBCXX \
   use_sysroot=$USE_SYSROOT \
   use_glib=false \
   is_clang=$IS_CLANG \
