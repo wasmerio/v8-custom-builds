@@ -2,6 +2,9 @@ $ErrorActionPreference = "Stop"
 # Make native command failures (non-zero exit code) throw terminating errors
 $PSNativeCommandUseErrorActionPreference = $true
 
+# Use the Windows toolchain pinned by V8 instead of the runner's installed SDK.
+$env:DEPOT_TOOLS_WIN_TOOLCHAIN = "1"
+
 $DEPOT_TOOLS_REPO="https://chromium.googlesource.com/chromium/tools/depot_tools.git"
 $V8_TAG="15.9.111"
 
@@ -29,6 +32,7 @@ git checkout $V8_TAG
 # Sync deps without hooks to avoid downloading unnecessary test data
 gclient sync --with_branch_heads --with_tags --nohooks
 # Run only the hooks required for building
+python3 build/vs_toolchain.py update --force
 python3 build/util/lastchange.py -o build/util/LASTCHANGE
 
 # Apply patches (--ignore-whitespace handles CRLF differences on Windows)
