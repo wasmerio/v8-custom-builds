@@ -15,9 +15,6 @@ jobs:
           - id: 'linux-arm64'
             os: 'ubuntu-22.04'
             native: false
-          - id: 'darwin-amd64'
-            os: 'macos-15-intel'
-            native: true
           - id: 'darwin-aarch64'
             os: 'macos-15'
             native: true
@@ -197,16 +194,6 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/linux-arm64/v8.tar.xz
           asset_name: v8-linux-arm64.tar.xz
-          asset_content_type: application/gzip
-
-      - name: Upload Release Asset Darwin (amd64)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/darwin-amd64/v8.tar.xz
-          asset_name: v8-darwin-amd64.tar.xz
           asset_content_type: application/gzip
 
       - name: Upload Release Asset Darwin (aarch64)
