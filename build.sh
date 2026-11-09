@@ -48,11 +48,6 @@ IS_CLANG=false
 if [ "$OS" = "linux" ] || [ "$OS" = "mac" ]; then
   IS_CLANG=true
 fi
-if [ "$OS" = "mac" ]; then
-  # Match V8's supported toolchain and avoid mixing Chromium Clang with
-  # Xcode's system libc++ headers.
-  USE_CUSTOM_LIBCXX=true
-fi
 if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
   # Use Chromium's bundled Clang cross-compiler and Debian sysroots rather
   # than a native ARM64 system compiler. Bullseye's libstdc++ lacks the
