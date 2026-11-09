@@ -27,3 +27,15 @@
 <hr/>
 
 > Go along your path, this is a dangerous place.
+
+## Linux AArch64
+
+Cross-compile on an x86-64 Linux host using V8/Chromium's bundled Clang:
+
+```sh
+./build.sh arm64 linux
+```
+
+The script installs Chromium's pinned ARM64 and host Debian sysroots and sets
+`target_cpu="arm64"`, `v8_target_cpu="arm64"`, and `use_sysroot=true`.
+No native ARM64 runner, QEMU, or system cross-compiler is required.
