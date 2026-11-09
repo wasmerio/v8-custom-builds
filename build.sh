@@ -47,11 +47,7 @@ IS_CLANG=false
 if [ "$OS" = "linux" ]; then
   IS_CLANG=true
 fi
-if [ "$OS" = "linux" ] && [ -f /etc/alpine-release ]; then
-  # Use Alpine's native musl toolchain rather than glibc-linked prebuilts.
-  CLANG_MAJOR_VERSION=$(clang -dumpversion | cut -d. -f1)
-  LINUX_TOOLCHAIN_ARGS="clang_base_path = \"/usr\" clang_version = \"$CLANG_MAJOR_VERSION\" clang_use_chrome_plugins = false"
-elif [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
+if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
   # GCC rejects some of V8's ARM NEON intrinsic conversions. Use the native
   # Clang toolchain without Chrome-only plugins or BTI. Release prebuilts run
   # in manylinux_2_28 so they remain compatible with glibc 2.28 and newer.
@@ -96,7 +92,7 @@ git reset --hard
 gclient recurse --scm=git -- git reset --hard
 git checkout "$V8_TAG"
 # Sync deps without hooks to avoid downloading unnecessary test data
-# (wasm-spec-tests, wasm-js) which can fail on musl/Alpine due to gsutil issues.
+# (wasm-spec-tests, wasm-js).
 gclient sync --with_branch_heads --with_tags --nohooks
 # Run only the hooks required for building
 python3 build/util/lastchange.py -o build/util/LASTCHANGE
