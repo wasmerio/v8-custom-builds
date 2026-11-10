@@ -42,20 +42,15 @@ else
   OS=$2
 fi
 
-USE_SYSROOT=false
-USE_CUSTOM_LIBCXX=false
+if [ "$OS" = "linux" ] && { [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; }; then
+  echo "Linux ARM64 builds are not supported" >&2
+  exit 1
+fi
+
 IS_CLANG=false
 if [ "$OS" = "linux" ] || [ "$OS" = "mac" ]; then
   IS_CLANG=true
 fi
-if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
-  # Use Chromium's bundled Clang cross-compiler and Debian sysroots rather
-  # than a native ARM64 system compiler. Bullseye's libstdc++ lacks the
-  # C++20 headers V8 needs, so use bundled libc++ for target and host tools.
-  USE_SYSROOT=true
-  USE_CUSTOM_LIBCXX=true
-fi
-
 if [ ! -d "$DEPOT_TOOLS_DIR" ]
 then 
   git clone "$DEPOT_TOOLS_REPO" "$DEPOT_TOOLS_DIR"
@@ -93,15 +88,6 @@ git checkout "$V8_TAG"
 gclient sync --with_branch_heads --with_tags --nohooks
 # Run only the hooks required for building
 python3 build/util/lastchange.py -o build/util/LASTCHANGE
-
-if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
-  # Hooks are disabled above, so install target and host sysroots explicitly.
-  # The host sysroot is needed for build-time tools such as mksnapshot.
-  python3 build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
-  if [ "$(uname -m)" = "x86_64" ]; then
-    python3 build/linux/sysroot_scripts/install-sysroot.py --arch=amd64
-  fi
-fi
 
 for patch in ../patches/*.patch; do 
   git apply "$patch"
@@ -148,9 +134,9 @@ gn gen out/release --args="is_debug=false \
   symbol_level = 0 \
   is_component_build=false \
   is_official_build=false \
-  use_custom_libcxx=$USE_CUSTOM_LIBCXX \
-  use_custom_libcxx_for_host=$USE_CUSTOM_LIBCXX \
-  use_sysroot=$USE_SYSROOT \
+  use_custom_libcxx=false \
+  use_custom_libcxx_for_host=false \
+  use_sysroot=false \
   use_glib=false \
   is_clang=$IS_CLANG \
   v8_expose_symbols=true \
@@ -220,7 +206,7 @@ echo "=== Distribution layout ==="
 find "$DIST_DIR" -type f | sort
 
 if [ "$OS" = "linux" ] && command -v readelf >/dev/null 2>&1; then
-  if readelf -rW "$DIST_DIR/lib/libv8.a" | grep -Eq 'R_X86_64_TPOFF32|R_AARCH64_TLSLE'; then
+  if readelf -rW "$DIST_DIR/lib/libv8.a" | grep -q 'R_X86_64_TPOFF32'; then
     echo "The V8 archive still contains local-exec TLS relocations" >&2
     exit 1
   fi
