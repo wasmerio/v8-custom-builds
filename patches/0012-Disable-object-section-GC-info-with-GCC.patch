@@ -1,0 +1,17 @@
+From: Wasmer Engineering <engineering@wasmer.io>
+Subject: [PATCH] Use runtime GC info registration with GCC
+
+GCC reports section type conflicts when GCInfoTrait instantiations with
+internal and external linkage share gc_info_section. Keep the runtime
+registration path for GCC builds.
+
+diff --git a/gni/v8.gni b/gni/v8.gni
+--- a/gni/v8.gni
++++ b/gni/v8.gni
+@@ -249,5 +249,5 @@
+ 
+   cppgc_enable_object_section_gcinfo =
+-      (is_linux || is_mac) && !is_component_build
++      (is_linux || is_mac) && !is_component_build && is_clang
+ 
+   # Enable support for larger cages, up to 16GB.

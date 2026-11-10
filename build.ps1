@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
 $DEPOT_TOOLS_REPO="https://chromium.googlesource.com/chromium/tools/depot_tools.git"
-$V8_TAG="13.6.233.17"
+$V8_TAG="15.9.111"
 
 # Clone depot-tools
 if (-not (Test-Path -Path "depot_tools" -PathType Container)) {
@@ -32,9 +32,9 @@ gclient sync --with_branch_heads --with_tags --nohooks
 python3 build/util/lastchange.py -o build/util/LASTCHANGE
 
 # Apply patches (--ignore-whitespace handles CRLF differences on Windows)
-$files = Get-ChildItem "../patches" -Filter *.patch
+$files = Get-ChildItem "../patches" -Filter *.patch | Sort-Object Name
 foreach ($f in $files){
-  git apply --ignore-whitespace $f
+  git apply --ignore-whitespace $f.FullName
 }
 
 # Write args.gn directly to avoid PowerShell quote-stripping issues
@@ -51,6 +51,7 @@ v8_expose_symbols = true
 v8_optimized_debug = false
 v8_enable_sandbox = false
 v8_enable_i18n_support = true
+v8_enable_temporal_support = false
 icu_use_data_file = false
 v8_enable_gdbjit = false
 v8_use_external_startup_data = false
@@ -62,8 +63,8 @@ v8_target_cpu = "x64"
 '@ | Set-Content -Path "out\release\args.gn" -Encoding utf8
 gn gen out/release
 
-# Showtime!
-ninja -C out/release wee8
+# Use the DEPS-pinned Chromium Ninja downloaded by gclient sync.
+& .\third_party\ninja\ninja.exe -C out/release wee8
 
 Get-ChildItem -Recurse out/release/obj
 

@@ -1,0 +1,31 @@
+From: Wasmer Engineering <engineering@wasmer.io>
+Subject: [PATCH] Only hide Apple new/delete symbols with bundled libc++
+
+Apple's system libc++ declares operator new/delete with default visibility.
+Forcing hidden visibility in the allocator shim conflicts with those
+declarations in the macOS 26 SDK. Only force hidden visibility when using
+bundled libc++, which is built with the matching visibility setting.
+
+diff --git a/third_party/partition_alloc/src/partition_alloc/BUILD.gn b/third_party/partition_alloc/src/partition_alloc/BUILD.gn
+--- a/third_party/partition_alloc/src/partition_alloc/BUILD.gn
++++ b/third_party/partition_alloc/src/partition_alloc/BUILD.gn
+@@ -2,6 +2,8 @@
+ # Use of this source code is governed by a BSD-style license that can be
+ # found in the LICENSE file.
+ 
++import("//build/config/c++/c++.gni")
++
+ import("../../partition_alloc.gni")
+ import("buildflag_header.gni")
+ 
+@@ -367,7 +369,9 @@
+   }
+ 
+   config("mac_no_default_new_delete_symbols") {
+-    if (!is_component_build) {
++    if (!is_component_build && use_custom_libcxx) {
++      # System libc++ declares these symbols with default visibility, which
++      # conflicts with force-hidden. Only hide them with bundled libc++.
+       # This is already set when we compile libc++, see
+       # buildtools/third_party/libc++/BUILD.gn. But it needs to be set here as
+       # well, since the shim defines the symbols, to prevent them being

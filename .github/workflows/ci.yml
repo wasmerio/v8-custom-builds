@@ -13,17 +13,8 @@ jobs:
             os: "ubuntu-22.04"
             native: true
           - id: 'linux-arm64'
-            os: 'ubuntu-24.04-arm'
-            native: true
-            # Keep release archives compatible with the SDK's Ubuntu 22.04 wheels.
-            container: 'quay.io/pypa/manylinux_2_28_aarch64@sha256:1676a4f178dc6cf8a1d1e3b7e1d71fca891a466ebde72a33880ccda8af3383d8'
-          - id: 'linux-musl'
             os: 'ubuntu-22.04'
-            native: true
-            container: alpine:3.21
-          - id: 'darwin-amd64'
-            os: 'macos-15-intel'
-            native: true
+            native: false
           - id: 'darwin-aarch64'
             os: 'macos-15'
             native: true
@@ -46,13 +37,12 @@ jobs:
       fail-fast: false
 
     runs-on: ${{ matrix.target.os }}
-    container: ${{ matrix.target.container }}
     steps:
       - name: Check out the code
         uses: actions/checkout@v6
 
       - name: Install dependencies on Ubuntu
-        if: startsWith(matrix.target.id, 'linux-amd64')
+        if: startsWith(matrix.target.id, 'linux-')
         shell: bash
         run: |
           sudo apt-get update
@@ -66,20 +56,6 @@ jobs:
           sudo apt install gcc make gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
           sudo apt-get install ninja-build clang libglib2.0-dev -y
 
-      - name: Install dependencies on manylinux (arm64)
-        if: startsWith(matrix.target.id, 'linux-arm64')
-        shell: bash
-        run: |
-          dnf install -y clang llvm lld ninja-build glib2-devel
-          printf '%s\n' \
-            '--gcc-toolchain=/opt/rh/gcc-toolset-14/root/usr' \
-            > /etc/clang/aarch64-unknown-linux-gnu-clang++.cfg
-
-      - name: Install dependencies on Alpine
-        if: startsWith(matrix.target.id, 'linux-musl')
-        run: |
-          apk add ninja bash git cmake clang-dev llvm-dev wget python3 alpine-sdk curl git tar xz py3-virtualenv py3-google-auth-httplib2 py3-httplib2 py3-distutils-extra py3-setuptools py3-pip py3-six gn
-
       - name: Install dependencies on macOS
         if: startsWith(matrix.target.id, 'darwin-') || matrix.target.id == 'ios'
         shell: bash
@@ -90,7 +66,7 @@ jobs:
         if: startsWith(matrix.target.id, 'darwin-') || matrix.target.id == 'ios'
         shell: bash
         run: |
-          sudo xcode-select -s /Applications/Xcode_16.2.app
+          sudo xcode-select -s /Applications/Xcode_26.0.app
 
       - name: Install dependencies on Windows
         if: startsWith(matrix.target.id, 'windows-')
@@ -98,15 +74,39 @@ jobs:
         run: |
           choco install ninja
 
+      - name: Install Windows SDK required by V8
+        if: matrix.target.id == 'windows-amd64'
+        shell: pwsh
+        run: |
+          # V8 pins SDK 10.0.28000.0; use the 10.0.28000.2270 installer.
+          $installer = Join-Path $env:RUNNER_TEMP 'winsdksetup.exe'
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/?linkid=2370315' -OutFile $installer
+          $process = Start-Process -FilePath $installer -ArgumentList '/quiet', '/norestart', '/features', 'OptionId.DesktopCPPx64', 'OptionId.DesktopCPPx86', 'OptionId.WindowsDesktopDebuggers' -Wait -PassThru
+          if ($process.ExitCode -notin @(0, 3010)) {
+            throw "Windows SDK installation failed with exit code $($process.ExitCode)"
+          }
+          $sdk = "${env:ProgramFiles(x86)}\Windows Kits\10"
+          if (-not (Test-Path "$sdk\Include\10.0.28000.0\um\Windows.h")) {
+            throw 'Windows SDK 10.0.28000.0 headers were not installed'
+          }
+
       - name: Setup MSVC (Windows) 
         uses: ilammy/msvc-dev-cmd@v1
         if: matrix.target.id == 'windows-amd64'
+        with:
+          sdk: '10.0.28000.0'
 
       - name: Build (native target) 
-        if: matrix.target.id != 'windows-amd64' && matrix.target.id != 'linux-musl' && matrix.target.native == true
+        if: matrix.target.id != 'windows-amd64' && matrix.target.native == true
         shell: bash
         run: |
           ./build.sh 
+
+      - name: Build (Linux ARM64 cross-compile)
+        if: matrix.target.id == 'linux-arm64'
+        shell: bash
+        run: |
+          ./build.sh "arm64" "linux"
 
       - name: Build (android) 
         if: matrix.target.id == 'android'
@@ -119,15 +119,6 @@ jobs:
         shell: bash
         run: |
           ./build.sh "arm64" "ios"
-
-      - name: Build musl
-        if: matrix.target.id == 'linux-musl'
-        shell: bash
-        run: |
-          CXX=clang++-18 ./build.sh
-        env:
-          VPYTHON_BYPASS: "manually managed python not supported by chrome operations"
-          DEPOT_TOOLS_BOOTSTRAP_PYTHON3: "0"
 
       - name: Build (Windows)
         if: matrix.target.id == 'windows-amd64'
@@ -221,26 +212,6 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/linux-arm64/v8.tar.xz
           asset_name: v8-linux-arm64.tar.xz
-          asset_content_type: application/gzip
-
-      - name: Upload Release Asset Linux musl
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/linux-musl/v8.tar.xz
-          asset_name: v8-linux-musl-amd64.tar.xz
-          asset_content_type: application/gzip
-
-      - name: Upload Release Asset Darwin (amd64)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/darwin-amd64/v8.tar.xz
-          asset_name: v8-darwin-amd64.tar.xz
           asset_content_type: application/gzip
 
       - name: Upload Release Asset Darwin (aarch64)

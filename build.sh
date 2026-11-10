@@ -8,7 +8,7 @@ set -x
 DEPOT_TOOLS_REPO="https://chromium.googlesource.com/chromium/tools/depot_tools.git"
 DEPOT_TOOLS_DIR="/tmp/depot_tools"
 
-V8_TAG=${V8_TAG:-"13.6.233.17"}
+V8_TAG=${V8_TAG:-"15.9.111"}
 
 if [ -z "$1" ]; then 
   case $(uname -m) in
@@ -42,19 +42,18 @@ else
   OS=$2
 fi
 
-ARM_TOOLCHAIN_ARGS=""
+USE_SYSROOT=false
+USE_CUSTOM_LIBCXX=false
 IS_CLANG=false
-if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
-  # GCC rejects some of V8's ARM NEON intrinsic conversions. Use the native
-  # Clang toolchain without Chrome-only plugins or BTI. Release prebuilts run
-  # in manylinux_2_28 so they remain compatible with glibc 2.28 and newer.
-  if [ "${AUDITWHEEL_PLAT:-}" = "manylinux_2_28_aarch64" ]; then
-    CLANG_MAJOR_VERSION=$(clang -dumpversion | cut -d. -f1)
-    ARM_TOOLCHAIN_ARGS="arm_control_flow_integrity = \"none\" clang_base_path = \"/usr\" clang_version = \"$CLANG_MAJOR_VERSION\" clang_use_chrome_plugins = false"
-  else
-    ARM_TOOLCHAIN_ARGS='arm_control_flow_integrity = "none" clang_base_path = "/usr/lib/llvm-18" clang_version = "18" clang_use_chrome_plugins = false'
-  fi
+if [ "$OS" = "linux" ] || [ "$OS" = "mac" ]; then
   IS_CLANG=true
+fi
+if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
+  # Use Chromium's bundled Clang cross-compiler and Debian sysroots rather
+  # than a native ARM64 system compiler. Bullseye's libstdc++ lacks the
+  # C++20 headers V8 needs, so use bundled libc++ for target and host tools.
+  USE_SYSROOT=true
+  USE_CUSTOM_LIBCXX=true
 fi
 
 if [ ! -d "$DEPOT_TOOLS_DIR" ]
@@ -65,10 +64,14 @@ fi
 export PATH="$PATH:$DEPOT_TOOLS_DIR"
 "$DEPOT_TOOLS_DIR/ensure_bootstrap"
 
-# Set up google's client and fetch v8
-if [ ! -d v8 ]
-then 
-  fetch v8
+# Set up Google's client, including when reusing a standalone V8 checkout.
+if [ ! -d v8 ] || [ ! -f .gclient ]
+then
+  if [ ! -d v8 ]; then
+    fetch v8
+  else
+    gclient config --name v8 --unmanaged https://chromium.googlesource.com/v8/v8.git
+  fi
   if [ "$OS" == "android" ] 
   then
 	echo "target_os = [\"android\"];" >> .gclient
@@ -83,17 +86,28 @@ fi
 
 cd v8
 git reset --hard
+gclient recurse --scm=git -- git reset --hard
 git checkout "$V8_TAG"
 # Sync deps without hooks to avoid downloading unnecessary test data
-# (wasm-spec-tests, wasm-js) which can fail on musl/Alpine due to gsutil issues.
+# (wasm-spec-tests, wasm-js).
 gclient sync --with_branch_heads --with_tags --nohooks
 # Run only the hooks required for building
 python3 build/util/lastchange.py -o build/util/LASTCHANGE
+
+if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
+  # Hooks are disabled above, so install target and host sysroots explicitly.
+  # The host sysroot is needed for build-time tools such as mksnapshot.
+  python3 build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
+  if [ "$(uname -m)" = "x86_64" ]; then
+    python3 build/linux/sysroot_scripts/install-sysroot.py --arch=amd64
+  fi
+fi
 
 for patch in ../patches/*.patch; do 
   git apply "$patch"
 done
 
+# Keep both Rust-backed integrations disabled. Intl still uses bundled ICU.
 if [ "$OS" == "ios" ]
 then
 gn gen out/release --args="is_debug=false \
@@ -119,11 +133,13 @@ gn gen out/release --args="is_debug=false \
   v8_enable_pointer_compression = true \
   v8_enable_short_builtin_calls = true \
   v8_monolithic = true \
+  v8_deprecation_warnings = false \
+  v8_enable_temporal_support = false \
+  v8_enable_ecma402_icu4x = false \
   ios_enable_code_signing = false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
-  $ARM_TOOLCHAIN_ARGS \
   target_environment=\"device\" \
   "
 else
@@ -132,9 +148,9 @@ gn gen out/release --args="is_debug=false \
   symbol_level = 0 \
   is_component_build=false \
   is_official_build=false \
-  use_custom_libcxx=false \
-  use_custom_libcxx_for_host=false \
-  use_sysroot=false \
+  use_custom_libcxx=$USE_CUSTOM_LIBCXX \
+  use_custom_libcxx_for_host=$USE_CUSTOM_LIBCXX \
+  use_sysroot=$USE_SYSROOT \
   use_glib=false \
   is_clang=$IS_CLANG \
   v8_expose_symbols=true \
@@ -148,12 +164,18 @@ gn gen out/release --args="is_debug=false \
   v8_enable_fast_mksnapshot = true \
   v8_enable_handle_zapping = false \
   v8_enable_pointer_compression = true \
+  v8_deprecation_warnings = false \
+  v8_enable_temporal_support = false \
+  v8_enable_ecma402_icu4x = false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
-  $ARM_TOOLCHAIN_ARGS \
   "
 fi
+
+# Chromium's Rust rules use multi-output depslog support that upstream Ninja
+# lacks. Always use the DEPS-pinned Chromium Ninja downloaded by gclient sync.
+NINJA=./third_party/ninja/ninja
 
 # Showtime!
 NINJA_ARGS=()
@@ -162,9 +184,9 @@ if [ -n "${NINJA_JOBS:-}" ]; then
 fi
 
 if [ "$OS" == "ios" ]; then
-  ninja "${NINJA_ARGS[@]}" -C out/release v8_monolith
+  "$NINJA" "${NINJA_ARGS[@]}" -C out/release v8_monolith
 else
-  ninja "${NINJA_ARGS[@]}" -C out/release wee8
+  "$NINJA" "${NINJA_ARGS[@]}" -C out/release wee8
 fi
 
 ls -laR out/release/obj
