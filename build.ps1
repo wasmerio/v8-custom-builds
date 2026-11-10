@@ -43,6 +43,10 @@ New-Item -ItemType Directory -Force -Path "out\release" | Out-Null
 is_debug = false
 v8_symbol_level = 2
 is_component_build = false
+# Match Rust's default MSVC DLL CRT without replacing the embedder's allocator.
+wee8_use_dynamic_crt = true
+use_allocator_shim = false
+use_partition_alloc_as_malloc = false
 is_official_build = false
 use_custom_libcxx = false
 use_custom_libcxx_for_host = true
