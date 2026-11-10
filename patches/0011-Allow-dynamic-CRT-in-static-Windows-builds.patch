@@ -1,0 +1,40 @@
+From: Wasmer Engineering <engineering@wasmer.io>
+Subject: [PATCH] Allow static wee8 builds to use the dynamic Windows CRT
+
+Rust's Windows MSVC targets use the dynamic CRT by default. Allow wee8 to
+match that runtime without enabling component builds (wee8 remains a static
+library). Apply the choice to release_crt as well for consistency.
+
+The embedder must also disable the allocator shim and PartitionAlloc's
+malloc replacement when selecting this mode.
+
+diff --git a/build/config/win/BUILD.gn b/build/config/win/BUILD.gn
+--- a/build/config/win/BUILD.gn
++++ b/build/config/win/BUILD.gn
+@@ -527,10 +527,15 @@
+ # CRT --------------------------------------------------------------------------
+ 
++declare_args() {
++  # Use the embedder's DLL CRT even when wee8 itself is a static library.
++  wee8_use_dynamic_crt = false
++}
++
+ # Configures how the runtime library (CRT) is going to be used.
+ # See https://msdn.microsoft.com/en-us/library/2kzt1wy3.aspx for a reference of
+ # what each value does.
+ config("default_crt") {
+-  if (is_component_build) {
++  if (is_component_build || wee8_use_dynamic_crt) {
+     # Component mode: dynamic CRT. Since the library is shared, it requires
+     # exceptions or will give errors about things not matching, so keep
+     # exceptions on.
+@@ -553,8 +558,8 @@
+ # tools that need to be fully optimized even in debug builds, for those times
+ # when the debug CRT is part of the bottleneck. This also avoids *implicitly*
+ # defining _DEBUG.
+ config("release_crt") {
+-  if (is_component_build) {
++  if (is_component_build || wee8_use_dynamic_crt) {
+     cflags = [ "/MD" ]
+ 
+     # /MD specifies msvcrt.lib as the CRT library, which is the dynamic+release
