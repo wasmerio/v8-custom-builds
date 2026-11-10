@@ -12,9 +12,6 @@ jobs:
           - id: 'linux-amd64'
             os: "ubuntu-22.04"
             native: true
-          - id: 'linux-arm64'
-            os: 'ubuntu-22.04'
-            native: false
           - id: 'darwin-aarch64'
             os: 'macos-15'
             native: true
@@ -101,12 +98,6 @@ jobs:
         shell: bash
         run: |
           ./build.sh 
-
-      - name: Build (Linux ARM64 cross-compile)
-        if: matrix.target.id == 'linux-arm64'
-        shell: bash
-        run: |
-          ./build.sh "arm64" "linux"
 
       - name: Build (android) 
         if: matrix.target.id == 'android'
@@ -202,16 +193,6 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/linux-amd64/v8.tar.xz
           asset_name: v8-linux-amd64.tar.xz
-          asset_content_type: application/gzip
-
-      - name: Upload Release Asset Linux (arm64)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/linux-arm64/v8.tar.xz
-          asset_name: v8-linux-arm64.tar.xz
           asset_content_type: application/gzip
 
       - name: Upload Release Asset Darwin (aarch64)
