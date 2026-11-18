@@ -41,3 +41,19 @@ The script installs Chromium's pinned ARM64 and host Debian sysroots and sets
 It uses Chromium's bundled libc++ for both target code and host tools because
 Bullseye's libstdc++ headers do not provide the C++20 features required by V8.
 No native ARM64 runner, QEMU, or system cross-compiler is required.
+
+## Typed JSPI example
+
+[The C11 sum example](examples/jspi-sum.c) imports a suspending callback with
+`wasm_func_new_suspending`, instantiates the module with `wasm_instance_new`,
+and wraps its `run` export with `wasm_func_promising`. When the host work
+completes, `wasm_jspi_call_resume` supplies its result to the suspended guest.
+The program prints `42`.
+
+On Linux, build the example against the unpacked distribution with:
+
+```sh
+cc -std=c11 -I"$WEE8_DIR/include/wasm-c-api" -c examples/jspi-sum.c -o jspi-sum.o
+c++ jspi-sum.o "$WEE8_DIR/lib/libv8.a" -ldl -pthread -o jspi-sum
+./jspi-sum
+```
