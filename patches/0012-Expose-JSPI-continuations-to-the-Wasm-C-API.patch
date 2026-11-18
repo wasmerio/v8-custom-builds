@@ -1,5 +1,5 @@
 diff --git a/src/compiler/turboshaft/wasm-wrappers-inl.h b/src/compiler/turboshaft/wasm-wrappers-inl.h
-index dddcceb3dc..9dbd52d022 100644
+index dddcceb3dc..51fed0370d 100644
 --- a/src/compiler/turboshaft/wasm-wrappers-inl.h
 +++ b/src/compiler/turboshaft/wasm-wrappers-inl.h
 @@ -460,46 +460,7 @@ void WasmWrapperTSGraphBuilder<Assembler>::BuildWasmToJSWrapper(
@@ -50,7 +50,7 @@ index dddcceb3dc..9dbd52d022 100644
    }
  
    int pushed_count = std::max(expected_arity, wasm_count);
-@@ -708,7 +669,93 @@ void WasmWrapperTSGraphBuilder<Assembler>::BuildWasmStackEntryWrapper() {
+@@ -708,7 +669,54 @@ void WasmWrapperTSGraphBuilder<Assembler>::BuildWasmStackEntryWrapper() {
  }
  
  template <typename Assembler>
@@ -101,51 +101,12 @@ index dddcceb3dc..9dbd52d022 100644
 +}
 +
 +template <typename Assembler>
-+void WasmWrapperTSGraphBuilder<Assembler>::BuildCapiPromisingEntry(
-+    const wasm::CanonicalSig* const* calls) {
-+  __ Bind(__ NewBlock());
-+  V<WasmImportData> data = __ Parameter(0, RegisterRepresentation::Tagged());
-+  V<JSArray> binding = __ template LoadTaggedField<JSArray>(
-+      data, offsetof(WasmImportData, callable_));
-+  V<FixedArray> functions = V<FixedArray>::Cast(
-+      __ LoadTaggedField(binding, offsetof(JSObject, elements_)));
-+  AbortIfNot(__ HasInstanceType(functions, FIXED_ARRAY_TYPE, SharedFlag{false}),
-+             AbortReason::kUnexpectedInstanceType);
-+  AbortIfNot(
-+      __ Uint32LessThanOrEqual(__ Word32Constant(3),
-+                               __ Load(functions, LoadOp::Kind::TaggedBase(),
-+                                       MemoryRepresentation::Uint32(),
-+                                       offsetof(FixedArray, length_))),
-+      AbortReason::kUnexpectedValue);
-+  base::Vector<OpIndex> values;
-+  for (int i = 0; i < 3; ++i) {
-+    V<WasmFuncRef> ref =
-+        V<WasmFuncRef>::Cast(__ LoadFixedArrayElement(functions, i));
-+    AbortIfNot(__ HasInstanceType(ref, WASM_FUNC_REF_TYPE, SharedFlag{false}),
-+               AbortReason::kUnexpectedInstanceType);
-+    auto internal =
-+        this->LoadInternalFunctionFromFuncRef(ref, LoadOp::Kind::TaggedBase());
-+    auto [target, implicit] = this->BuildFunctionTargetAndImplicitArg(internal);
-+    const wasm::CanonicalSig* sig = calls[i];
-+    auto args =
-+        __ phase_zone() -> template AllocateVector<OpIndex>(1 + values.size());
-+    args[0] = implicit;
-+    std::copy(values.begin(), values.end(), args.begin() + 1);
-+    values = __ phase_zone()
-+                 -> template AllocateVector<OpIndex>(sig->return_count());
-+    BuildCallWasmFromWrapper(__ phase_zone(), sig, target, args, values, {},
-+                             compiler::LazyDeoptOnThrow{false});
-+  }
-+  __ Return(__ Word32Constant(0));
-+}
-+
-+template <typename Assembler>
 +void WasmWrapperTSGraphBuilder<Assembler>::BuildCapiCallWrapper(
 +    wasm::Suspend suspend) {
    __ Bind(__ NewBlock());
    base::SmallVector<OpIndex, 8> incoming_params;
    // Instance.
-@@ -764,8 +811,39 @@ void WasmWrapperTSGraphBuilder<Assembler>::BuildCapiCallWrapper() {
+@@ -764,8 +772,39 @@ void WasmWrapperTSGraphBuilder<Assembler>::BuildCapiCallWrapper() {
    auto host_sig =
        FixedSizeSignature<MachineType>::Returns(MachineType::Pointer())
            .Params(MachineType::AnyTagged(), MachineType::Pointer());
@@ -188,47 +149,42 @@ index dddcceb3dc..9dbd52d022 100644
    IF_NOT (__ WordPtrEqual(return_value, __ IntPtrConstant(0))) {
      WasmRethrowExplicitContextDescriptor interface_descriptor;
 diff --git a/src/compiler/turboshaft/wasm-wrappers.cc b/src/compiler/turboshaft/wasm-wrappers.cc
-index 86c8583b6d..93f77a09e3 100644
+index 86c8583b6d..96d2e94342 100644
 --- a/src/compiler/turboshaft/wasm-wrappers.cc
 +++ b/src/compiler/turboshaft/wasm-wrappers.cc
-@@ -56,7 +56,10 @@ void BuildWasmWrapper(PipelineData* data, Graph& graph,
+@@ -56,7 +56,7 @@ void BuildWasmWrapper(PipelineData* data, Graph& graph,
                                            wrapper_info.expected_arity,
                                            wrapper_info.suspend);
      case CodeKind::WASM_TO_CAPI_FUNCTION:
 -      return builder.BuildCapiCallWrapper();
-+      if (wrapper_info.jspi_calls) {
-+        return builder.BuildCapiPromisingEntry(wrapper_info.jspi_calls);
-+      }
 +      return builder.BuildCapiCallWrapper(wrapper_info.suspend);
      case CodeKind::C_WASM_ENTRY:
        return builder.BuildCWasmEntryWrapper();
      case CodeKind::WASM_STACK_ENTRY:
 diff --git a/src/compiler/turboshaft/wasm-wrappers.h b/src/compiler/turboshaft/wasm-wrappers.h
-index 74c576d047..5e880b198c 100644
+index 74c576d047..0897d661fb 100644
 --- a/src/compiler/turboshaft/wasm-wrappers.h
 +++ b/src/compiler/turboshaft/wasm-wrappers.h
-@@ -141,7 +141,9 @@ class WasmWrapperTSGraphBuilder : public wasm::WasmGraphBuilderBase<Assembler> {
+@@ -141,7 +141,8 @@ class WasmWrapperTSGraphBuilder : public wasm::WasmGraphBuilderBase<Assembler> {
  
    void BuildWasmStackEntryWrapper();
  
 -  void BuildCapiCallWrapper();
 +  OpIndex CheckSuspender(V<WordPtr> old_sp, V<Context> native_context);
 +  void BuildCapiCallWrapper(wasm::Suspend suspend);
-+  void BuildCapiPromisingEntry(const wasm::CanonicalSig* const* calls);
  
    void BuildCWasmEntryWrapper();
  
 diff --git a/src/compiler/wasm-compiler.cc b/src/compiler/wasm-compiler.cc
-index 57fa19d629..dd6e6377a5 100644
+index 57fa19d629..c82d0e2a23 100644
 --- a/src/compiler/wasm-compiler.cc
 +++ b/src/compiler/wasm-compiler.cc
-@@ -581,12 +581,16 @@ wasm::WasmCompilationResult CompileWasmStackEntryWrapper(
+@@ -581,12 +581,14 @@ wasm::WasmCompilationResult CompileWasmStackEntryWrapper(
  }
  
  wasm::WasmCompilationResult CompileWasmCapiCallWrapper(
 -    const wasm::CanonicalSig* sig) {
-+    const wasm::CanonicalSig* sig, wasm::Suspend suspend,
-+    const wasm::CanonicalSig* const* jspi_calls) {
++    const wasm::CanonicalSig* sig, wasm::Suspend suspend) {
    TRACE_EVENT(TRACE_DISABLED_BY_DEFAULT("v8.wasm.detailed"),
                "wasm.CompileWasmCapiFunction");
  
@@ -236,37 +192,28 @@ index 57fa19d629..dd6e6377a5 100644
 -      sig, wasm::WrapperCompilationInfo{CodeKind::WASM_TO_CAPI_FUNCTION},
 +      sig,
 +      wasm::WrapperCompilationInfo{CodeKind::WASM_TO_CAPI_FUNCTION,
-+                                   wasm::kDefaultImportCallKind, 0, suspend,
-+                                   jspi_calls},
++                                   wasm::kDefaultImportCallKind, 0, suspend},
        "WasmCapiCall", WasmStubAssemblerOptions());
  }
  
 diff --git a/src/compiler/wasm-compiler.h b/src/compiler/wasm-compiler.h
-index 0bbc31c72b..b83c92df9f 100644
+index 0bbc31c72b..386f8c189b 100644
 --- a/src/compiler/wasm-compiler.h
 +++ b/src/compiler/wasm-compiler.h
-@@ -55,7 +55,8 @@ V8_EXPORT_PRIVATE wasm::WasmCompilationResult CompileWasmStackEntryWrapper(
+@@ -55,7 +55,7 @@ V8_EXPORT_PRIVATE wasm::WasmCompilationResult CompileWasmStackEntryWrapper(
  
  // Compiles a host call wrapper, which allows Wasm to call host functions.
  wasm::WasmCompilationResult CompileWasmCapiCallWrapper(
 -    const wasm::CanonicalSig*);
-+    const wasm::CanonicalSig*, wasm::Suspend suspend,
-+    const wasm::CanonicalSig* const* jspi_calls = nullptr);
++    const wasm::CanonicalSig*, wasm::Suspend suspend);
  
  // Compiles a wrapper to call a Fast API function from Wasm.
  wasm::WasmCompilationResult CompileWasmJSFastCallWrapper(
 diff --git a/src/wasm/c-api.cc b/src/wasm/c-api.cc
-index d7f43d0c94..c7c78fbd91 100644
+index d7f43d0c94..6ad378760c 100644
 --- a/src/wasm/c-api.cc
 +++ b/src/wasm/c-api.cc
-@@ -21,11 +21,14 @@
- 
- #include "src/wasm/c-api.h"
- 
-+#include <algorithm>
-+#include <cmath>
- #include <cstring>
- #include <iomanip>
+@@ -26,6 +26,7 @@
  #include <iostream>
  
  #include "include/libplatform/libplatform.h"
@@ -274,7 +221,7 @@ index d7f43d0c94..c7c78fbd91 100644
  #include "include/v8-initialization.h"
  #include "include/v8config.h"
  #include "src/api/api-inl.h"
-@@ -35,6 +38,7 @@
+@@ -35,6 +36,7 @@
  #include "src/builtins/builtins.h"
  #include "src/common/assert-scope.h"
  #include "src/compiler/wasm-compiler.h"
@@ -282,23 +229,14 @@ index d7f43d0c94..c7c78fbd91 100644
  #include "src/flags/flags.h"
  #include "src/objects/call-site-info-inl.h"
  #include "src/objects/js-array-buffer-inl.h"
-@@ -46,6 +50,7 @@
- #include "src/wasm/wasm-arguments.h"
- #include "src/wasm/wasm-constants.h"
- #include "src/wasm/wasm-engine.h"
-+#include "src/wasm/wasm-import-wrapper-cache.h"
- #include "src/wasm/wasm-objects-inl.h"
- #include "src/wasm/wasm-result.h"
- #include "src/wasm/wasm-serialization.h"
-@@ -91,6 +96,41 @@
+@@ -91,6 +93,39 @@
  // then set this to 1 (in here, or via -DDUMP_COUNTERS=1 compiler argument).
  #define DUMP_COUNTERS 0
  
 +struct PromisingTarget {
 +  wasm::own<wasm::Func> function;
 +  wasm::own<wasm::FuncType> type;
-+  v8::Global<v8::Function> js_entry, typed_entry;
-+  std::vector<std::shared_ptr<v8::internal::wasm::WasmWrapperHandle>> wrappers;
++  v8::Global<v8::Function> js_entry;
 +};
 +
 +struct wasm_promising_func_t {
@@ -314,7 +252,6 @@ index d7f43d0c94..c7c78fbd91 100644
 +  wasm::vec<wasm::Val> inputs = wasm::vec<wasm::Val>::make();
 +  wasm::vec<wasm::Val> returned = wasm::vec<wasm::Val>::make();
 +  wasm::own<wasm::FuncType> suspended_type;
-+  bool js_results = false;
 +  std::shared_ptr<PromisingTarget> target;
 +};
 +
@@ -332,24 +269,18 @@ index d7f43d0c94..c7c78fbd91 100644
  namespace wasm {
  
  namespace {
-@@ -1588,8 +1628,15 @@ struct FuncData {
+@@ -1588,8 +1623,9 @@ struct FuncData {
  
    Store* store;
    own<FuncType> type;
 -  enum Kind { kCallback, kCallbackWithEnv } kind;
-+  enum Kind {
-+    kCallback,
-+    kCallbackWithEnv,
-+    kAsync,
-+    kLoadArguments,
-+    kSaveResults
-+  } kind;
++  enum Kind { kCallback, kCallbackWithEnv, kAsync } kind;
    union {
 +    wasm_async_callback_t async_callback;
      Func::callback callback;
      Func::callback_with_env callback_with_env;
    };
-@@ -1608,6 +1655,11 @@ struct FuncData {
+@@ -1608,6 +1644,11 @@ struct FuncData {
    }
  
    static i::Address v8_callback(i::Address host_data_foreign, i::Address argv);
@@ -361,7 +292,7 @@ index d7f43d0c94..c7c78fbd91 100644
  };
  
  namespace {
-@@ -1685,11 +1737,20 @@ auto make_func(Store* store_abs, std::shared_ptr<FuncData> data) -> own<Func> {
+@@ -1685,11 +1726,20 @@ auto make_func(Store* store_abs, std::shared_ptr<FuncData> data) -> own<Func> {
    const i::wasm::CanonicalSig* sig =
        i::wasm::GetTypeCanonicalizer()->LookupFunctionSignature(sig_index);
    i::DirectHandle<i::WasmCapiFunction> function = i::WasmCapiFunction::New(
@@ -383,7 +314,7 @@ index d7f43d0c94..c7c78fbd91 100644
    auto func = implement<Func>::type::make(store, function);
    return func;
  }
-@@ -1908,6 +1969,9 @@ own<Trap> CallWasmCapiFunction(i::Tagged<i::WasmCapiFunctionData> data,
+@@ -1908,6 +1958,9 @@ own<Trap> CallWasmCapiFunction(i::Tagged<i::WasmCapiFunctionData> data,
    if (func_data->kind == FuncData::kCallback) {
      return (func_data->callback)(args, results);
    }
@@ -393,7 +324,7 @@ index d7f43d0c94..c7c78fbd91 100644
    DCHECK(func_data->kind == FuncData::kCallbackWithEnv);
    return (func_data->callback_with_env)(func_data->env, args, results);
  }
-@@ -2018,6 +2082,20 @@ WASM_EXPORT auto Func::call(const vec<Val>& args, vec<Val>& results) const
+@@ -2018,6 +2071,20 @@ WASM_EXPORT auto Func::call(const vec<Val>& args, vec<Val>& results) const
  
  i::Address FuncData::v8_callback(i::Address host_data_foreign,
                                   i::Address argv) {
@@ -414,7 +345,7 @@ index d7f43d0c94..c7c78fbd91 100644
    i::CppGCManaged<FuncData>::Ptr self =
        i::Cast<i::CppGCManaged<FuncData>>(
            i::Tagged<i::Object>(host_data_foreign))
-@@ -2032,7 +2110,7 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
+@@ -2032,7 +2099,7 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
    const ownvec<ValType>& param_types = self->type->params();
    const ownvec<ValType>& result_types = self->type->results();
  
@@ -423,7 +354,7 @@ index d7f43d0c94..c7c78fbd91 100644
    int num_result_types = static_cast<int>(result_types.size());
  
    auto params = vec<Val>::make_uninitialized(num_param_types);
-@@ -2077,14 +2155,42 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
+@@ -2077,14 +2144,34 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
      size_t ref_index = 0;
      for (int i = 0; i < num_param_types; ++i) {
        if (param_types[i]->is_ref()) {
@@ -437,15 +368,7 @@ index d7f43d0c94..c7c78fbd91 100644
  
    own<Trap> trap;
 -  if (self->kind == kCallbackWithEnv) {
-+  if (self->kind == kLoadArguments) {
-+    CHECK(call && call->inputs.size() == results.size());
-+    for (size_t i = 0; i < results.size(); ++i)
-+      results[i] = std::move(call->inputs[i]);
-+  } else if (self->kind == kSaveResults) {
-+    CHECK(call && call->returned.size() == params.size());
-+    for (size_t i = 0; i < params.size(); ++i)
-+      call->returned[i] = params[i].copy();
-+  } else if (resumed) {
++  if (resumed) {
 +    DCHECK(call &&
 +           call->inputs.size() == static_cast<size_t>(num_result_types));
 +    results = std::move(call->inputs);
@@ -468,7 +391,7 @@ index d7f43d0c94..c7c78fbd91 100644
      trap = self->callback_with_env(self->env, params, results);
    } else {
      trap = self->callback(params, results);
-@@ -3563,6 +3669,36 @@ auto wasm_callback(void* env, const wasm::vec<wasm::Val>& args,
+@@ -3563,6 +3650,36 @@ auto wasm_callback(void* env, const wasm::vec<wasm::Val>& args,
    return adopt_trap(f(hide_val_vec(args), hide_val_vec(results)));
  }
  
@@ -505,14 +428,24 @@ index d7f43d0c94..c7c78fbd91 100644
  struct wasm_callback_env_t {
    wasm_func_callback_with_env_t callback;
    void* env;
-@@ -3600,6 +3736,18 @@ wasm_func_t* wasm_func_new_with_env(wasm_store_t* store,
+@@ -3600,6 +3717,28 @@ wasm_func_t* wasm_func_new_with_env(wasm_store_t* store,
                                         env2, wasm_callback_env_finalizer));
  }
  
++static bool HasSimdSignature(const wasm::FuncType* type) {
++  for (const auto* types : {&type->params(), &type->results()}) {
++    for (size_t i = 0; i < types->size(); ++i) {
++      if ((*types)[i]->kind() == wasm::ValKind::V128) return true;
++    }
++  }
++  return false;
++}
++
 +wasm_func_t* wasm_func_new_suspending(wasm_store_t* store,
 +                                      const wasm_functype_t* type,
 +                                      wasm_async_callback_t callback, void* env,
 +                                      void (*finalizer)(void*)) {
++  if (HasSimdSignature(type)) return nullptr;
 +  auto data =
 +      std::make_shared<wasm::FuncData>(store, type, wasm::FuncData::kAsync);
 +  data->async_callback = callback;
@@ -524,7 +457,7 @@ index d7f43d0c94..c7c78fbd91 100644
  wasm_functype_t* wasm_func_type(const wasm_func_t* func) {
    return release_functype(func->type());
  }
-@@ -3622,6 +3770,439 @@ WASM_API_EXTERN wasm_trap_t* wasm_func_call(const wasm_func_t* func,
+@@ -3622,6 +3761,351 @@ WASM_API_EXTERN wasm_trap_t* wasm_func_call(const wasm_func_t* func,
    return ret;
  }
  
@@ -648,7 +581,7 @@ index d7f43d0c94..c7c78fbd91 100644
 +
 +// JSPI fulfills its promise with undefined, one value, or a packed array.
 +wasm_trap_t* ReturnTypedValues(wasm_pending_call_t* call, wasm_val_vec_t* out) {
-+  if (call->js_results) {
++  if (!call->completion.IsEmpty()) {
 +    auto result = call->completion.Get(call->store->isolate())->Result();
 +    auto& types = call->target->type->results();
 +    for (size_t i = 0; i < types.size(); ++i) {
@@ -666,6 +599,10 @@ index d7f43d0c94..c7c78fbd91 100644
 +          break;
 +        case wasm::ValKind::I64:
 +          call->returned[i] = wasm::Val(value.As<v8::BigInt>()->Int64Value());
++          break;
++        case wasm::ValKind::F32:
++          call->returned[i] =
++              wasm::Val(static_cast<float>(value.As<v8::Number>()->Value()));
 +          break;
 +        case wasm::ValKind::F64:
 +          call->returned[i] = wasm::Val(value.As<v8::Number>()->Value());
@@ -692,87 +629,6 @@ index d7f43d0c94..c7c78fbd91 100644
 +  return nullptr;
 +}
 +
-+// Imports use the compiled Wasm-to-C wrapper, whereas the C function's
-+// internal call target is its native callback and uses a different ABI.
-+vi::DirectHandle<vi::WasmFuncRef> HostTarget(PromisingTarget* target,
-+                                             const wasm::Func* func) {
-+  auto isolate = wasm::impl(func)->store()->i_isolate();
-+  auto factory = isolate->factory();
-+  auto obj = wasm::impl(func)->v8_object();
-+  auto data = obj->shared()->wasm_capi_function_data();
-+  auto sig = data->internal()->sig();
-+  auto wrapper = vw::GetWasmImportWrapperCache()->GetCompiled(
-+      isolate, {vw::ImportCallKind::kWasmToCapi, sig,
-+                static_cast<int>(sig->parameter_count()), vw::kNoSuspend});
-+  target->wrappers.push_back(wrapper);
-+  auto implicit = vi::direct_handle(data->internal()->implicit_arg(), isolate);
-+  auto internal = factory->NewWasmInternalFunction(
-+      implicit, -1, wrapper->code_pointer(), sig);
-+  return factory->NewWasmFuncRef(internal, factory->wasm_func_ref_map());
-+}
-+
-+v8::Local<v8::Function> MakeTypedEntry(PromisingTarget* target) {
-+  auto func = target->function.get();
-+  auto ty = target->type.get();
-+  auto store = wasm::impl(func)->store();
-+  auto isolate = store->i_isolate();
-+  auto factory = isolate->factory();
-+  auto load_type = wasm::FuncType::make(wasm::ownvec<wasm::ValType>::make(),
-+                                        ty->params().deep_copy());
-+  auto save_type = wasm::FuncType::make(ty->results().deep_copy(),
-+                                        wasm::ownvec<wasm::ValType>::make());
-+  auto abstract_store = wasm::seal<wasm::Store>(store);
-+  auto load = wasm::make_func(
-+      abstract_store,
-+      std::make_shared<wasm::FuncData>(abstract_store, load_type.get(),
-+                                       wasm::FuncData::kLoadArguments));
-+  auto save = wasm::make_func(
-+      abstract_store,
-+      std::make_shared<wasm::FuncData>(abstract_store, save_type.get(),
-+                                       wasm::FuncData::kSaveResults));
-+  auto first = HostTarget(target, load.get());
-+  auto last = HostTarget(target, save.get());
-+  auto exported =
-+      wasm::impl(func)->v8_object()->shared()->wasm_exported_function_data();
-+  vi::DirectHandle<vi::WasmExportedFunctionData> data(exported, isolate);
-+  auto functions = factory->NewFixedArray(3);
-+  functions->set(0, *first);
-+  functions->set(1, data->func_ref());
-+  functions->set(2, *last);
-+  auto binding = factory->NewJSArrayWithElements(functions);
-+  auto canonicalizer = vw::GetTypeCanonicalizer();
-+  vw::FunctionSig void_sig(0, 0, nullptr);
-+  auto entry_sig = canonicalizer->LookupFunctionSignature(
-+      canonicalizer->AddRecursiveGroup(&void_sig));
-+  auto guest_sig = data->internal()->sig();
-+  auto& entry = store->jspi_entries[guest_sig];
-+  if (!entry) {
-+    const vw::CanonicalSig* calls[]{first->internal(isolate)->sig(), guest_sig,
-+                                    last->internal(isolate)->sig()};
-+    auto compiled = vi::compiler::CompileWasmCapiCallWrapper(
-+        entry_sig, vw::kNoSuspend, calls);
-+    entry = std::make_shared<vw::WasmWrapperHandle>(
-+        vi::kNullAddress, entry_sig->signature_hash());
-+    vw::WasmImportWrapperCache::ModificationScope scope(
-+        vw::GetWasmImportWrapperCache());
-+    scope.AddWrapper(std::move(compiled), vw::WasmCode::kWasmToCapiWrapper,
-+                     entry_sig->signature_hash(), entry);
-+  }
-+  auto instance = vi::direct_handle(data->instance_data(), isolate);
-+  auto implicit =
-+      factory->NewWasmImportData(binding, vw::kNoSuspend, instance, entry_sig);
-+  auto internal = factory->NewWasmInternalFunction(
-+      implicit, data->function_index(), entry->code_pointer(), entry_sig);
-+  auto ref = factory->NewWasmFuncRef(internal, factory->wasm_func_ref_map());
-+  // Use the same intrinsic as WebAssembly.promising, with a private typed
-+  // entry. Only the nullary prompt crosses the JavaScript calling convention.
-+  auto entry_data = factory->NewWasmExportedFunctionData(
-+      instance, ref, internal, vi::v8_flags.wasm_wrapper_tiering_budget,
-+      vw::kNoPromise);
-+  return v8::Utils::ToLocal(vi::NewPromisingWasmFunction(isolate, entry_data));
-+}
-+// Number::New canonicalizes NaNs. Use the typed entry if an argument would
-+// lose any bits. This decision must be made before the guest executes.
 +v8::Local<v8::Value> JSArgument(v8::Isolate* isolate, const wasm::Val& arg) {
 +  switch (arg.kind()) {
 +    case wasm::ValKind::I32:
@@ -780,11 +636,9 @@ index d7f43d0c94..c7c78fbd91 100644
 +    case wasm::ValKind::I64:
 +      return v8::BigInt::New(isolate, arg.i64());
 +    case wasm::ValKind::F32:
-+      if (!std::isnan(arg.f32())) return v8::Number::New(isolate, arg.f32());
-+      break;
++      return v8::Number::New(isolate, arg.f32());
 +    case wasm::ValKind::F64:
-+      if (!std::isnan(arg.f64())) return v8::Number::New(isolate, arg.f64());
-+      break;
++      return v8::Number::New(isolate, arg.f64());
 +    case wasm::ValKind::FUNCREF:
 +    case wasm::ValKind::EXTERNREF:
 +      if (!arg.ref()) return v8::Null(isolate);
@@ -792,31 +646,6 @@ index d7f43d0c94..c7c78fbd91 100644
 +    default:
 +      UNREACHABLE();
 +  }
-+  return {};
-+}
-+
-+v8::MaybeLocal<v8::Value> InvokePromising(wasm_pending_call_t* call) {
-+  auto isolate = call->store->isolate();
-+  auto& target = *call->target;
-+  if (!target.js_entry.IsEmpty()) {
-+    v8::LocalVector<v8::Value> args(isolate);
-+    args.reserve(call->inputs.size());
-+    for (size_t i = 0; i < call->inputs.size(); ++i) {
-+      auto value = JSArgument(isolate, call->inputs[i]);
-+      if (value.IsEmpty()) break;
-+      args.push_back(value);
-+    }
-+    if (args.size() == call->inputs.size()) {
-+      call->js_results = true;
-+      return target.js_entry.Get(isolate)->Call(
-+          call->store->context(), v8::Undefined(isolate),
-+          static_cast<int>(args.size()), args.data());
-+    }
-+  }
-+  if (target.typed_entry.IsEmpty())
-+    target.typed_entry.Reset(isolate, MakeTypedEntry(&target));
-+  return target.typed_entry.Get(isolate)->Call(
-+      call->store->context(), v8::Undefined(isolate), 0, nullptr);
 +}
 +}  // namespace
 +}  // extern "C++"
@@ -832,6 +661,12 @@ index d7f43d0c94..c7c78fbd91 100644
 +  v8::Isolate::Scope isolate_scope(store->isolate());
 +  v8::HandleScope handles(store->isolate());
 +  v8::Context::Scope context(store->context());
++  if (HasSimdSignature(target->type.get())) {
++    if (error)
++      *error = release_trap(JspiError(
++          store, "V8 JSPI does not support v128 parameters or results"));
++    return nullptr;
++  }
 +  if (!vi::WasmCapiFunction::IsWasmCapiFunction(*f->v8_object())) {
 +    if (store->i_isolate()->native_context()->is_wasm_jspi_installed() ==
 +        vi::Smi::zero()) {
@@ -843,15 +678,15 @@ index d7f43d0c94..c7c78fbd91 100644
 +    auto isolate = store->i_isolate();
 +    auto data = vi::direct_handle(
 +        f->v8_object()->shared()->wasm_exported_function_data(), isolate);
-+    auto sig = data->internal()->sig();
-+    // A JS f32 result is widened to a double, which can quiet a signaling NaN.
-+    if (vw::IsJSCompatibleSignature(sig) &&
-+        std::find(sig->returns().begin(), sig->returns().end(), vw::kWasmF32) ==
-+            sig->returns().end()) {
-+      target->js_entry.Reset(
-+          store->isolate(),
-+          v8::Utils::ToLocal(vi::NewPromisingWasmFunction(isolate, data)));
++    if (!vw::IsJSCompatibleSignature(data->internal()->sig())) {
++      if (error)
++        *error = release_trap(JspiError(
++            store, "function signature is incompatible with JavaScript"));
++      return nullptr;
 +    }
++    target->js_entry.Reset(
++        store->isolate(),
++        v8::Utils::ToLocal(vi::NewPromisingWasmFunction(isolate, data)));
 +  }
 +  return new wasm_promising_func_t{std::move(target)};
 +}
@@ -900,9 +735,19 @@ index d7f43d0c94..c7c78fbd91 100644
 +  } else {
 +    v8::TryCatch caught(call->store->isolate());
 +    v8::Local<v8::Value> result;
-+    if (!InvokePromising(call.get()).ToLocal(&result) || !result->IsPromise())
++    auto isolate = call->store->isolate();
++    v8::LocalVector<v8::Value> argv(isolate);
++    argv.reserve(call->inputs.size());
++    for (size_t i = 0; i < call->inputs.size(); ++i) {
++      argv.push_back(JSArgument(isolate, call->inputs[i]));
++    }
++    if (!call->target->js_entry.Get(isolate)
++             ->Call(call->store->context(), v8::Undefined(isolate),
++                    static_cast<int>(argv.size()), argv.data())
++             .ToLocal(&result) ||
++        !result->IsPromise())
 +      return JspiFailure(call->store, caught,
-+                         "could not start typed Wasm entry");
++                         "could not call promising Wasm export");
 +    call->completion.Reset(call->store->isolate(), result.As<v8::Promise>());
 +    auto trap = FinishTurn(call, next);
 +    if (trap || !call) return trap;
@@ -964,36 +809,6 @@ index d7f43d0c94..c7c78fbd91 100644
  // Global Instances
  
  WASM_DEFINE_REF(global, wasm::Global)
-diff --git a/src/wasm/c-api.h b/src/wasm/c-api.h
-index bcd72f5069..ccdc94d791 100644
---- a/src/wasm/c-api.h
-+++ b/src/wasm/c-api.h
-@@ -13,12 +13,15 @@
- #define LIBWASM_STATIC 1
- #endif
- 
-+#include <unordered_map>
-+
- #include "include/v8-isolate.h"
- #include "include/v8-local-handle.h"
- #include "include/v8config.h"
- #include "src/common/assert-scope.h"
- #include "src/common/globals.h"
- #include "src/handles/handles.h"
-+#include "src/wasm/wasm-wrapper-cache.h"
- #include "third_party/wasm-api/wasm.hh"
- 
- namespace v8 {
-@@ -34,6 +37,9 @@ namespace wasm {
- class StoreImpl {
-  public:
-   ~StoreImpl();
-+  std::unordered_map<const i::wasm::CanonicalSig*,
-+                     std::shared_ptr<i::wasm::WasmWrapperHandle>>
-+      jspi_entries;
- 
-   void destroy();
- 
 diff --git a/src/wasm/module-instantiate.cc b/src/wasm/module-instantiate.cc
 index d6d5bbc887..62d7702a06 100644
 --- a/src/wasm/module-instantiate.cc
@@ -1007,18 +822,6 @@ index d6d5bbc887..62d7702a06 100644
      return ImportCallKind::kWasmToCapi;
    }
    // Assuming we are calling to JS, check whether this would be a runtime error.
-diff --git a/src/wasm/module-instantiate.h b/src/wasm/module-instantiate.h
-index aaaf29462d..8f3f1976d5 100644
---- a/src/wasm/module-instantiate.h
-+++ b/src/wasm/module-instantiate.h
-@@ -129,6 +129,7 @@ struct WrapperCompilationInfo {
-   wasm::ImportCallKind import_kind = kDefaultImportCallKind;
-   int expected_arity = 0;
-   wasm::Suspend suspend = kNoSuspend;
-+  const CanonicalSig* const* jspi_calls = nullptr;
- };
- 
- }  // namespace wasm
 diff --git a/src/wasm/wasm-import-wrapper-cache.cc b/src/wasm/wasm-import-wrapper-cache.cc
 index edb7171896..0d164a6c16 100644
 --- a/src/wasm/wasm-import-wrapper-cache.cc
@@ -1051,10 +854,17 @@ index 584e674b19..c8da24805d 100644
    Tagged<WasmImportData> implicit_arg =
        TrustedCast<WasmImportData>(func_data->internal()->implicit_arg());
 diff --git a/test/wasm-api-tests/callbacks.cc b/test/wasm-api-tests/callbacks.cc
-index 777e083f87..5c19188596 100644
+index 777e083f87..dd42df3e3e 100644
 --- a/test/wasm-api-tests/callbacks.cc
 +++ b/test/wasm-api-tests/callbacks.cc
-@@ -7,6 +7,7 @@
+@@ -2,11 +2,14 @@
+ // Use of this source code is governed by a BSD-style license that can be
+ // found in the LICENSE file.
+ 
++#include <cmath>
++
+ #include "src/execution/isolate.h"
+ #include "src/heap/heap-allocator.h"
  #include "src/heap/heap.h"
  #include "src/wasm/c-api.h"
  #include "test/wasm-api-tests/wasm-api-test.h"
@@ -1062,7 +872,7 @@ index 777e083f87..5c19188596 100644
  
  namespace v8 {
  namespace internal {
-@@ -123,6 +124,242 @@ own<Trap> FibonacciC(void* env, const vec<Val>& args, vec<Val>& results) {
+@@ -123,6 +126,236 @@ own<Trap> FibonacciC(void* env, const vec<Val>& args, vec<Val>& results) {
  
  }  // namespace
  
@@ -1243,10 +1053,7 @@ index 777e083f87..5c19188596 100644
 +  EXPECT_EQ(42, result.of.i32);
 +}
 +
-+TEST_F(WasmCapiTest, PromisingScalarAndBitExactResults) {
-+  // Return the f32 argument's raw bits, the i64 argument, and that same
-+  // integer reinterpreted as an f64. Only the f32 result in the second
-+  // export requires a typed entry for every invocation.
++TEST_F(WasmCapiTest, PromisingScalarResults) {
 +  ValueType types[]{kWasmI32, kWasmI64, kWasmF64,    kWasmFuncRef,
 +                    kWasmF32, kWasmI64, kWasmFuncRef};
 +  FunctionSig scalar(4, 3, types);
@@ -1260,7 +1067,6 @@ index 777e083f87..5c19188596 100644
 +  AddExportedFunction("float", f32_body, sizeof(f32_body), &floating);
 +  auto imports = vec<Extern*>::make();
 +  Instantiate(imports);
-+  auto& entries = reinterpret_cast<::wasm::StoreImpl*>(store())->jspi_entries;
 +  auto run = wasm_func_promising(
 +      reinterpret_cast<wasm_func_t*>(GetExportedFunction(0)), nullptr);
 +  ASSERT_NE(nullptr, run);
@@ -1277,17 +1083,15 @@ index 777e083f87..5c19188596 100644
 +  wasm_pending_call_t* pending = nullptr;
 +  ASSERT_EQ(nullptr, wasm_promising_func_call(run, &args, &results, &pending));
 +  ASSERT_EQ(nullptr, pending);
-+  EXPECT_TRUE(entries.empty());
 +  EXPECT_EQ(INT32_MIN, outputs[0].of.i32);
 +  EXPECT_EQ(static_cast<int64_t>(payload64), outputs[1].of.i64);
-+  EXPECT_EQ(payload64, base::bit_cast<uint64_t>(outputs[2].of.f64));
++  EXPECT_TRUE(std::isnan(outputs[2].of.f64));
 +
 +  ASSERT_EQ(WASM_FUNCREF, outputs[3].kind);
 +  EXPECT_TRUE(wasm_ref_same(inputs[2].of.ref, outputs[3].of.ref));
 +  inputs[0].of.f32 = base::bit_cast<float>(payload32);
 +  ASSERT_EQ(nullptr, wasm_promising_func_call(run, &args, &results, &pending));
-+  EXPECT_EQ(1u, entries.size());
-+  EXPECT_EQ(payload32, static_cast<uint32_t>(outputs[0].of.i32));
++  EXPECT_TRUE(std::isnan(base::bit_cast<float>(outputs[0].of.i32)));
 +  wasm_promising_func_delete(run);
 +  wasm_val_delete(&outputs[3]);
 +
@@ -1298,7 +1102,7 @@ index 777e083f87..5c19188596 100644
 +  wasm_val_vec_t one_arg{1, &bits}, one_result{1, &out};
 +  ASSERT_EQ(nullptr,
 +            wasm_promising_func_call(run, &one_arg, &one_result, &pending));
-+  EXPECT_EQ(payload32, base::bit_cast<uint32_t>(out.of.f32));
++  EXPECT_TRUE(std::isnan(out.of.f32));
 +  wasm_promising_func_delete(run);
 +}
 +
@@ -1306,10 +1110,10 @@ index 777e083f87..5c19188596 100644
    // Build the following function:
    // int32 fibonacci_wasm(int32 arg0) {
 diff --git a/third_party/wasm-api/wasm.h b/third_party/wasm-api/wasm.h
-index 8dad7d11c4..bb753f1833 100644
+index 8dad7d11c4..484fe873df 100644
 --- a/third_party/wasm-api/wasm.h
 +++ b/third_party/wasm-api/wasm.h
-@@ -453,6 +453,45 @@ WASM_API_EXTERN own wasm_trap_t* wasm_func_call(
+@@ -453,6 +453,48 @@ WASM_API_EXTERN own wasm_trap_t* wasm_func_call(
    const wasm_func_t*, const wasm_val_vec_t* args, wasm_val_vec_t* results);
  
  
@@ -1326,6 +1130,7 @@ index 8dad7d11c4..bb753f1833 100644
 +                                                  const wasm_val_vec_t* args,
 +                                                  wasm_val_vec_t* results,
 +                                                  bool* pending);
++// Returns NULL for a v128 parameter or result. On failure the caller retains env.
 +WASM_API_EXTERN own wasm_func_t* wasm_func_new_suspending(
 +    wasm_store_t*, const wasm_functype_t*, wasm_async_callback_t, void* env,
 +    void (*finalizer)(void*));
@@ -1333,6 +1138,8 @@ index 8dad7d11c4..bb753f1833 100644
 +// WebAssembly.promising(func). The reusable callable and each outstanding
 +// invocation own their handles independently. The store must outlive both.
 +typedef struct wasm_promising_func_t wasm_promising_func_t;
++// A v128 parameter or result is rejected. Floating-point values crossing the
++// JavaScript boundary follow JS Number conversions, including NaN handling.
 +WASM_API_EXTERN own wasm_promising_func_t* wasm_func_promising(
 +    const wasm_func_t*, own wasm_trap_t** error);
 +WASM_API_EXTERN void wasm_promising_func_delete(own wasm_promising_func_t*);

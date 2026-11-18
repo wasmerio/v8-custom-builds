@@ -138,7 +138,7 @@ jobs:
           # V8's C API fixture owns the process-wide platform.
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.IndependentJspiContinuations
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingFunctionOwnsEachInvocation
-          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingScalarAndBitExactResults
+          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingScalarResults
 
       - name: Run the C11 JSPI example
         if: matrix.target.id == 'linux-amd64'
