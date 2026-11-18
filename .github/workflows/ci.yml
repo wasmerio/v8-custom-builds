@@ -127,6 +127,26 @@ jobs:
         env: 
           DEPOT_TOOLS_WIN_TOOLCHAIN: 0
 
+      - name: Test the C11 JSPI example and import binding modes
+        if: matrix.target.id == 'linux-amd64'
+        run: |
+          for source in examples/jspi-sum.c tests/jspi-bindings.c; do
+            cc -std=c11 -Wall -Wextra -Werror -Iv8/out/dist/include/wasm-c-api -c "$source" -o "$RUNNER_TEMP/test.o"
+            c++ "$RUNNER_TEMP/test.o" v8/out/dist/lib/libv8.a -ldl -pthread -o "$RUNNER_TEMP/test"
+            "$RUNNER_TEMP/test"
+          done
+
+      - name: Test the C11 JSPI example and import binding modes on Windows
+        if: matrix.target.id == 'windows-amd64'
+        shell: pwsh
+        run: |
+          foreach ($source in "examples/jspi-sum.c", "tests/jspi-bindings.c") {
+            cl /nologo /MD /std:c11 /DLIBWASM_STATIC /Iv8/out/dist/include/wasm-c-api $source /Fe:jspi-test.exe /link v8/out/dist/lib/v8.lib winmm.lib dbghelp.lib shlwapi.lib advapi32.lib
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            .\jspi-test.exe
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+
       - name: Zip
         if: matrix.target.id != 'windows-amd64'
         shell: bash
@@ -159,6 +179,64 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 1
+
+  wasmer-revision:
+    name: Select Wasmer revision for JSPI tests
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      sha: ${{ steps.consumer.outputs.sha }}
+    steps:
+      - id: consumer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/wasmerio/wasmer/pulls/7200 --jq '"sha=" + (if .merged then .merge_commit_sha else .head.sha end)' >> "$GITHUB_OUTPUT"
+
+  wasmer-jspi:
+    name: Wasmer JSPI (${{ matrix.target }})
+    needs: [build, wasmer-revision]
+    # Exercise any available native artifacts even if a cross-build failed.
+    if: ${{ !cancelled() && needs.wasmer-revision.result == 'success' }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            os: ubuntu-22.04
+          - target: windows-amd64
+            os: windows-2022
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: wasmerio/wasmer
+          ref: ${{ needs.wasmer-revision.outputs.sha }}
+          persist-credentials: false
+          submodules: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: wee8-package
+      - name: Unpack wee8
+        shell: bash
+        run: |
+          tar -xJf wee8-package/v8.tar.xz -C wee8-package
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev llvm
+      - name: Set up LLVM on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "$env:ProgramFiles\LLVM\bin" >> $env:GITHUB_PATH
+          "LIBCLANG_PATH=$env:ProgramFiles\LLVM\bin" >> $env:GITHUB_ENV
+      - name: Test Wasmer against the built library
+        env:
+          WASMER_WEE8_DIR: ${{ github.workspace }}/wee8-package
+        run: cargo test --locked -p wasmer --no-default-features --features v8-default,experimental-async --test jspi_async --test jspi_async_v8 --test simple_greenthread
 
   release:
     name: Release

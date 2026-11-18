@@ -186,6 +186,9 @@ fi
 
 # Chromium's Rust rules use multi-output depslog support that upstream Ninja
 # lacks. Always use the DEPS-pinned Chromium Ninja downloaded by gclient sync.
+mkdir -p out/release/gen
+cp ../wasm-jspi.h out/release/gen/wasm-jspi.h
+
 NINJA=./third_party/ninja/ninja
 
 # Showtime!
@@ -219,6 +222,8 @@ find "$DIST_DIR/include" -type f ! -name "*.h" -delete
 
 # Copy the patched wasm C API header
 cp third_party/wasm-api/wasm.h "$DIST_DIR/include/wasm-c-api/wasm.h"
+cp ../wasm-jspi.h "$DIST_DIR/include/wasm-c-api/wasm-jspi.h"
+printf '\n#include "wasm-jspi.h"\n' >> "$DIST_DIR/include/wasm-c-api/wasm.h"
 
 # Copy the library (renamed to libv8.a)
 if [ "$OS" == "ios" ]; then

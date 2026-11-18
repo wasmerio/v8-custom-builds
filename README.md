@@ -41,3 +41,33 @@ The script installs Chromium's pinned ARM64 and host Debian sysroots and sets
 It uses Chromium's bundled libc++ for both target code and host tools because
 Bullseye's libstdc++ headers do not provide the C++20 features required by V8.
 No native ARM64 runner, QEMU, or system cross-compiler is required.
+
+## Typed JSPI example
+
+[The C11 sum example](examples/jspi-sum.c) imports a suspending callback with
+`wasm_func_new_suspending_with_env`, instantiates the module with `wasm_instance_new`,
+and wraps its `run` export with `wasm_func_promising`. When the host work
+completes, `wasm_pending_call_resume` supplies its result to the suspended guest.
+The program prints `42`. Use `wasm_func_new_suspending` for callbacks that take no environment. V8 caches the promising wrapper on the guest function object, so distinct C handles for the same export can reuse it.
+
+By default, `wasm_instance_new` binds ordinary C functions using their native
+ABI, preserving floating-point NaN payloads. Supplying a suspending C import
+selects JS-compatible binding for the instance. For an instance with only
+ordinary imports, use `wasm_instance_new_with_jspi` if a promising call needs
+to invoke them. JS-compatible scalar imports and promising exports use
+JavaScript number conversions, which can change NaN payloads.
+
+A synchronous guest call, including a module start function, traps before a
+suspending callback runs. A direct C call to a ready native callback can still
+complete synchronously. The async C API rejects `v128` parameters and results.
+SIMD inside the guest survives suspension. Calling an unwrapped native C
+callback from the secondary Wasm stack traps before entering the host. This
+includes SIMD imports and raw C functions inserted directly into tables.
+
+On Linux, build the example against the unpacked distribution with:
+
+```sh
+cc -std=c11 -I"$WEE8_DIR/include/wasm-c-api" -c examples/jspi-sum.c -o jspi-sum.o
+c++ jspi-sum.o "$WEE8_DIR/lib/libv8.a" -ldl -pthread -o jspi-sum
+./jspi-sum
+```
