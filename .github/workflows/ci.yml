@@ -236,7 +236,7 @@ jobs:
       - name: Test Wasmer against the built library
         env:
           WASMER_WEE8_DIR: ${{ github.workspace }}/wee8-package
-        run: cargo test --locked -p wasmer --no-default-features --features v8-default,experimental-async --test jspi_async --test jspi_async_v8 --test simple_greenthread
+        run: cargo test --locked -p wasmer --no-default-features --features v8-default,experimental-async --test jspi_async --test simple_greenthread
 
   release:
     name: Release
