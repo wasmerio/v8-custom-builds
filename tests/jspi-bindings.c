@@ -100,6 +100,7 @@ int main(void) {
   check_binding(store, module, &imports, EXPLICIT_JSPI);
   wasm_func_t* suspending = wasm_func_new_suspending(store, type, ready_echo);
   assert(suspending);
+  wasm_func_owner_t* plain_owner = wasm_func_own(suspending);
   items[1] = wasm_func_as_extern(suspending);
   check_binding(store, module, &imports, IMPLICIT_JSPI);
   items[0] = items[1];
@@ -108,15 +109,16 @@ int main(void) {
   wasm_func_t* with_env = wasm_func_new_suspending_with_env(
       store, type, echo_with_env, &finalizations, count_finalizer);
   assert(with_env);
+  wasm_func_owner_t* env_owner = wasm_func_own(with_env);
   items[0] = wasm_func_as_extern(with_env);
   check_binding(store, module, &imports, SUSPENDING_ECHO);
-  wasm_func_delete(with_env);
-  wasm_func_delete(suspending);
+  wasm_func_owner_delete(plain_owner);
   wasm_func_delete(host);
   wasm_functype_delete(type);
   wasm_module_delete(module);
   wasm_byte_vec_delete(&bytes);
   wasm_store_delete(store);
   assert(finalizations == 1);
+  wasm_func_owner_delete(env_owner);
   wasm_engine_delete(engine);
 }

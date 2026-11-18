@@ -16,6 +16,13 @@ typedef struct wasm_pending_call_t wasm_pending_call_t;
 // Tests for V8's WebAssembly.SuspendError at a synchronous JSPI boundary.
 WASM_API_EXTERN bool wasm_trap_is_suspend_error(const wasm_trap_t *);
 
+// Transfer an owned function reference to a lifetime token on its store thread.
+// While the store and token are alive, the original pointer may be borrowed on
+// the store thread. Delete only the token, on any thread, even after teardown.
+typedef struct wasm_func_owner_t wasm_func_owner_t;
+WASM_API_EXTERN wasm_func_owner_t *wasm_func_own(wasm_func_t *);
+WASM_API_EXTERN void wasm_func_owner_delete(wasm_func_owner_t *);
+
 // Bind plain scalar C imports as JS callbacks for calls from promising exports.
 // wasm_instance_new selects this mode automatically for a suspending import.
 // Other instances use the native C ABI by default.
