@@ -127,27 +127,25 @@ jobs:
         env: 
           DEPOT_TOOLS_WIN_TOOLCHAIN: 0
 
-      - name: Test JSPI host callbacks and continuation ownership
-        if: matrix.target.id == 'linux-amd64' || matrix.target.id == 'windows-amd64'
-        shell: bash
-        working-directory: v8
-        env:
-          DEPOT_TOOLS_WIN_TOOLCHAIN: 0
-        run: |
-          ./third_party/ninja/ninja -C out/release wasm_api_tests
-          # V8's C API fixture owns the process-wide platform.
-          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.IndependentJspiContinuations
-          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingFunctionOwnsEachInvocation
-          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingScalarResults
-          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.SimdHostImportFromPromisingExport
-          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.SynchronousFloatImportPreservesNanPayloads
-
-      - name: Run the C11 JSPI example
+      - name: Test the C11 JSPI example and import binding modes
         if: matrix.target.id == 'linux-amd64'
         run: |
-          cc -std=c11 -Wall -Wextra -Werror -Iv8/out/dist/include/wasm-c-api -c examples/jspi-sum.c -o "$RUNNER_TEMP/jspi-sum.o"
-          c++ "$RUNNER_TEMP/jspi-sum.o" v8/out/dist/lib/libv8.a -ldl -pthread -o "$RUNNER_TEMP/jspi-sum"
-          "$RUNNER_TEMP/jspi-sum"
+          for source in examples/jspi-sum.c tests/jspi-bindings.c; do
+            cc -std=c11 -Wall -Wextra -Werror -Iv8/out/dist/include/wasm-c-api -c "$source" -o "$RUNNER_TEMP/test.o"
+            c++ "$RUNNER_TEMP/test.o" v8/out/dist/lib/libv8.a -ldl -pthread -o "$RUNNER_TEMP/test"
+            "$RUNNER_TEMP/test"
+          done
+
+      - name: Test the C11 JSPI example and import binding modes on Windows
+        if: matrix.target.id == 'windows-amd64'
+        shell: pwsh
+        run: |
+          foreach ($source in "examples/jspi-sum.c", "tests/jspi-bindings.c") {
+            cl /nologo /MD /std:c11 /DLIBWASM_STATIC /Iv8/out/dist/include/wasm-c-api $source /Fe:jspi-test.exe /link v8/out/dist/lib/v8.lib winmm.lib dbghelp.lib shlwapi.lib advapi32.lib
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            .\jspi-test.exe
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
 
       - name: Zip
         if: matrix.target.id != 'windows-amd64'

@@ -66,6 +66,8 @@ target_cpu = "x64"
 v8_target_cpu = "x64"
 '@ | Set-Content -Path "out\release\args.gn" -Encoding utf8
 gn gen out/release
+New-Item -ItemType Directory -Force -Path "out/release/gen" | Out-Null
+Copy-Item "../wasm-jspi.h" "out/release/gen/wasm-jspi.h"
 
 # Use the DEPS-pinned Chromium Ninja downloaded by gclient sync.
 & .\third_party\ninja\ninja.exe -C out/release wee8
@@ -90,6 +92,8 @@ Get-ChildItem -Path "include" -Directory | ForEach-Object {
 
 # Copy the patched wasm C API header
 Copy-Item -Path "third_party\wasm-api\wasm.h" -Destination "$DIST_DIR\include\wasm-c-api\wasm.h"
+Copy-Item "../wasm-jspi.h" "$DIST_DIR\include\wasm-c-api\wasm-jspi.h"
+Add-Content -Encoding ascii -Path "$DIST_DIR\include\wasm-c-api\wasm.h" -Value '#include "wasm-jspi.h"'
 
 # Copy the library (renamed from wee8.lib to v8.lib)
 Copy-Item -Path "out\release\obj\wee8.lib" -Destination "$DIST_DIR\lib\v8.lib"
