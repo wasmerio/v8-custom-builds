@@ -56,7 +56,7 @@ int main(void) {
   wasm_instance_t* instance = wasm_instance_new(store, module, &imports, &trap);
   wasm_extern_vec_t exports = WASM_EMPTY_VEC;
   wasm_promising_func_t* run = NULL;
-  wasm_jspi_call_t* call = NULL;
+  wasm_pending_call_t* call = NULL;
   wasm_val_t answer = WASM_I32_VAL(0);
   wasm_val_vec_t results = {1, &answer};
   int status = EXIT_FAILURE;
@@ -72,7 +72,7 @@ int main(void) {
   // The guest is suspended. An event loop would deliver this completion.
   wasm_val_t value = WASM_I32_VAL(request.a + request.b);
   wasm_val_vec_t completed = {1, &value};
-  trap = wasm_jspi_call_resume(&call, &completed, NULL, &results);
+  trap = wasm_pending_call_resume(&call, &completed, NULL, &results);
   if (!trap && !call && answer.of.i32 == 42) {
     printf("%" PRId32 "\n", answer.of.i32);
     status = EXIT_SUCCESS;
@@ -86,7 +86,7 @@ done:
     wasm_byte_vec_delete(&message);
     wasm_trap_delete(trap);
   }
-  wasm_jspi_call_delete(call);
+  wasm_pending_call_delete(call);
   wasm_promising_func_delete(run);
   wasm_extern_vec_delete(&exports);
   if (instance) wasm_instance_delete(instance);

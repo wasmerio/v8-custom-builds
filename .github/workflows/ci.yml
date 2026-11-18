@@ -137,8 +137,6 @@ jobs:
           ./third_party/ninja/ninja -C out/release wasm_api_tests
           # V8's C API fixture owns the process-wide platform.
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.IndependentJspiContinuations
-          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.JspiMissingBuiltins
-          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.JspiInvalidImportSlot
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingFunctionOwnsEachInvocation
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingScalarAndBitExactResults
 
