@@ -15,8 +15,6 @@ extern "C" {
 typedef struct wasm_pending_call_t wasm_pending_call_t;
 // Tests for V8's WebAssembly.SuspendError at a synchronous JSPI boundary.
 WASM_API_EXTERN bool wasm_trap_is_suspend_error(const wasm_trap_t *);
-WASM_API_EXTERN bool wasm_func_belongs_to_store(const wasm_func_t *,
-                                                const wasm_store_t *);
 
 // Bind plain scalar C imports as JS callbacks for calls from promising exports.
 // wasm_instance_new selects this mode automatically for a suspending import.
@@ -27,16 +25,21 @@ wasm_instance_new_with_jspi(wasm_store_t *, const wasm_module_t *,
 
 // A typed callback can set *pending to suspend. When pending is NULL the
 // caller is synchronous and the callback must complete before returning.
-typedef wasm_trap_t *(*wasm_async_callback_t)(void *env,
-                                              const wasm_val_vec_t *args,
+typedef wasm_trap_t *(*wasm_async_callback_t)(const wasm_val_vec_t *args,
                                               wasm_val_vec_t *results,
                                               bool *pending);
+typedef wasm_trap_t *(*wasm_async_callback_with_env_t)(
+    void *env, const wasm_val_vec_t *args, wasm_val_vec_t *results,
+    bool *pending);
 // Returns NULL if JSPI is unavailable or a parameter or result is v128. On
 // failure the caller retains env.
+WASM_API_EXTERN wasm_func_t *wasm_func_new_suspending(wasm_store_t *,
+                                                      const wasm_functype_t *,
+                                                      wasm_async_callback_t);
 WASM_API_EXTERN wasm_func_t *
-wasm_func_new_suspending(wasm_store_t *, const wasm_functype_t *,
-                         wasm_async_callback_t, void *env,
-                         void (*finalizer)(void *));
+wasm_func_new_suspending_with_env(wasm_store_t *, const wasm_functype_t *,
+                                  wasm_async_callback_with_env_t, void *env,
+                                  void (*finalizer)(void *));
 
 // WebAssembly.promising(func). The reusable callable and each outstanding
 // invocation own their handles independently. The store must outlive both.

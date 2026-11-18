@@ -48,7 +48,7 @@ int main(void) {
   wasm_functype_t* type = wasm_functype_new_2_1(
       wasm_valtype_new_i32(), wasm_valtype_new_i32(), wasm_valtype_new_i32());
   wasm_func_t* host =
-      wasm_func_new_suspending(store, type, sum, &request, NULL);
+      wasm_func_new_suspending_with_env(store, type, sum, &request, NULL);
   wasm_functype_delete(type);
   wasm_extern_t* import_items[] = {wasm_func_as_extern(host)};
   wasm_extern_vec_t imports = {1, import_items};

@@ -1,5 +1,5 @@
 diff --git a/src/wasm/c-api.cc b/src/wasm/c-api.cc
-index d7f43d0c94..dc1e3223a3 100644
+index d7f43d0c94..019d1defbb 100644
 --- a/src/wasm/c-api.cc
 +++ b/src/wasm/c-api.cc
 @@ -26,6 +26,7 @@
@@ -66,18 +66,21 @@ index d7f43d0c94..dc1e3223a3 100644
  namespace wasm {
  
  namespace {
-@@ -1588,8 +1624,9 @@ struct FuncData {
+@@ -1588,8 +1624,12 @@ struct FuncData {
  
    Store* store;
    own<FuncType> type;
 -  enum Kind { kCallback, kCallbackWithEnv } kind;
 +  enum Kind { kCallback, kCallbackWithEnv, kAsync } kind;
    union {
-+    wasm_async_callback_t async_callback;
++    struct {
++      wasm_async_callback_t plain;
++      wasm_async_callback_with_env_t with_env;
++    } async_callback;
      Func::callback callback;
      Func::callback_with_env callback_with_env;
    };
-@@ -1608,6 +1645,9 @@ struct FuncData {
+@@ -1608,6 +1648,9 @@ struct FuncData {
    }
  
    static i::Address v8_callback(i::Address host_data_foreign, i::Address argv);
@@ -87,7 +90,7 @@ index d7f43d0c94..dc1e3223a3 100644
  };
  
  namespace {
-@@ -1687,9 +1727,20 @@ auto make_func(Store* store_abs, std::shared_ptr<FuncData> data) -> own<Func> {
+@@ -1687,9 +1730,20 @@ auto make_func(Store* store_abs, std::shared_ptr<FuncData> data) -> own<Func> {
    i::DirectHandle<i::WasmCapiFunction> function = i::WasmCapiFunction::New(
        isolate, reinterpret_cast<i::Address>(&FuncData::v8_callback),
        embedder_data, sig);
@@ -111,7 +114,7 @@ index d7f43d0c94..dc1e3223a3 100644
    auto func = implement<Func>::type::make(store, function);
    return func;
  }
-@@ -1908,6 +1959,9 @@ own<Trap> CallWasmCapiFunction(i::Tagged<i::WasmCapiFunctionData> data,
+@@ -1908,6 +1962,9 @@ own<Trap> CallWasmCapiFunction(i::Tagged<i::WasmCapiFunctionData> data,
    if (func_data->kind == FuncData::kCallback) {
      return (func_data->callback)(args, results);
    }
@@ -121,7 +124,7 @@ index d7f43d0c94..dc1e3223a3 100644
    DCHECK(func_data->kind == FuncData::kCallbackWithEnv);
    return (func_data->callback_with_env)(func_data->env, args, results);
  }
-@@ -1938,6 +1992,9 @@ i::DirectHandle<i::JSReceiver> GetProperException(
+@@ -1938,6 +1995,9 @@ i::DirectHandle<i::JSReceiver> GetProperException(
  
  }  // namespace
  
@@ -131,7 +134,7 @@ index d7f43d0c94..dc1e3223a3 100644
  WASM_EXPORT auto Func::call(const vec<Val>& args, vec<Val>& results) const
      -> own<Trap> {
    auto func = impl(this);
-@@ -1988,10 +2045,9 @@ WASM_EXPORT auto Func::call(const vec<Val>& args, vec<Val>& results) const
+@@ -1988,10 +2048,9 @@ WASM_EXPORT auto Func::call(const vec<Val>& args, vec<Val>& results) const
            i::TryCast(data, &trusted_data)) {
          return CallWasmCapiFunction(trusted_data, args, results);
        }
@@ -145,7 +148,7 @@ index d7f43d0c94..dc1e3223a3 100644
      } else {
        // A WasmFunction from another module.
        DCHECK(IsWasmInstanceObject(*object_ref));
-@@ -2018,12 +2074,16 @@ WASM_EXPORT auto Func::call(const vec<Val>& args, vec<Val>& results) const
+@@ -2018,12 +2077,16 @@ WASM_EXPORT auto Func::call(const vec<Val>& args, vec<Val>& results) const
  
  i::Address FuncData::v8_callback(i::Address host_data_foreign,
                                   i::Address argv) {
@@ -162,7 +165,7 @@ index d7f43d0c94..dc1e3223a3 100644
    v8::Isolate::Scope isolate_scope(store->isolate());
    i::HandleScope scope(isolate);
  
-@@ -2084,7 +2144,9 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
+@@ -2084,7 +2147,9 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
    }
  
    own<Trap> trap;
@@ -173,7 +176,7 @@ index d7f43d0c94..dc1e3223a3 100644
      trap = self->callback_with_env(self->env, params, results);
    } else {
      trap = self->callback(params, results);
-@@ -2599,10 +2661,28 @@ WASM_EXPORT auto Instance::copy() const -> own<Instance> {
+@@ -2599,10 +2664,28 @@ WASM_EXPORT auto Instance::copy() const -> own<Instance> {
    return impl(this)->copy();
  }
  
@@ -206,7 +209,7 @@ index d7f43d0c94..dc1e3223a3 100644
    StoreImpl* store = impl(store_abs);
    const implement<Module>::type* module = impl(module_abs);
    i::Isolate* isolate = store->i_isolate();
-@@ -2612,6 +2692,12 @@ WASM_EXPORT own<Instance> Instance::make(Store* store_abs,
+@@ -2612,6 +2695,12 @@ WASM_EXPORT own<Instance> Instance::make(Store* store_abs,
  
    if (trap) *trap = nullptr;
    ownvec<ImportType> import_types = module_abs->imports();
@@ -219,7 +222,7 @@ index d7f43d0c94..dc1e3223a3 100644
    i::DirectHandle<i::JSObject> imports_obj =
        isolate->factory()->NewJSObject(isolate->object_function());
    for (size_t i = 0; i < import_types.size(); ++i) {
-@@ -2631,8 +2717,37 @@ WASM_EXPORT own<Instance> Instance::make(Store* store_abs,
+@@ -2631,8 +2720,37 @@ WASM_EXPORT own<Instance> Instance::make(Store* store_abs,
        ignore(
            i::Object::SetProperty(isolate, imports_obj, module_str, module_obj));
      }
@@ -259,7 +262,7 @@ index d7f43d0c94..dc1e3223a3 100644
    }
    i::wasm::ErrorThrower thrower(isolate, "instantiation");
    i::MaybeDirectHandle<i::WasmInstanceObject> instance_obj =
-@@ -2661,6 +2776,15 @@ WASM_EXPORT own<Instance> Instance::make(Store* store_abs,
+@@ -2661,6 +2779,15 @@ WASM_EXPORT own<Instance> Instance::make(Store* store_abs,
    return implement<Instance>::type::make(store, instance_obj.ToHandleChecked());
  }
  
@@ -275,7 +278,38 @@ index d7f43d0c94..dc1e3223a3 100644
  namespace {
  
  own<Instance> GetInstance(StoreImpl* store,
-@@ -3563,6 +3687,42 @@ auto wasm_callback(void* env, const wasm::vec<wasm::Val>& args,
+@@ -2749,11 +2876,13 @@ struct borrowed_vec {
+ 
+ }  // extern "C++"
+ 
+-#define WASM_DEFINE_OWN(name, Name)                                            \
++#define WASM_DEFINE_OWN(name, Name) \
++  WASM_DEFINE_OWN_CASTS(name, Name) \
++  void wasm_##name##_delete(wasm_##name##_t* x) { delete x; }
++
++#define WASM_DEFINE_OWN_CASTS(name, Name)                                            \
+   struct wasm_##name##_t : Name {};                                            \
+                                                                                \
+-  void wasm_##name##_delete(wasm_##name##_t* x) { delete x; }                  \
+-                                                                               \
+   extern "C++" inline auto hide_##name(Name* x)->wasm_##name##_t* {            \
+     return static_cast<wasm_##name##_t*>(x);                                   \
+   }                                                                            \
+@@ -2944,7 +3073,12 @@ wasm_engine_t* wasm_engine_new_with_config(wasm_config_t* config) {
+ 
+ // Stores
+ 
+-WASM_DEFINE_OWN(store, wasm::Store)
++WASM_DEFINE_OWN_CASTS(store, wasm::Store)
++
++void wasm_store_delete(wasm_store_t* store) {
++  // The implementation owns the isolate. Use wasm::Store's custom deleter.
++  auto owner = adopt_store(store);
++}
+ 
+ wasm_store_t* wasm_store_new(wasm_engine_t* engine) {
+   return release_store(wasm::Store::make(engine));
+@@ -3563,6 +3697,45 @@ auto wasm_callback(void* env, const wasm::vec<wasm::Val>& args,
    return adopt_trap(f(hide_val_vec(args), hide_val_vec(results)));
  }
  
@@ -301,8 +335,11 @@ index d7f43d0c94..dc1e3223a3 100644
 +    borrowed[i].kind = hide_valkind(type->params()[i]->kind());
 +  }
 +  wasm_val_vec_t typed_args{borrowed.size(), borrowed.data()};
-+  auto trap = adopt_trap(
-+      async_callback(env, &typed_args, hide_val_vec(results), pending));
++  auto out = hide_val_vec(results);
++  auto trap =
++      adopt_trap(async_callback.plain
++                     ? async_callback.plain(&typed_args, out, pending)
++                     : async_callback.with_env(env, &typed_args, out, pending));
 +  if (!trap && !(pending && *pending)) {
 +    for (size_t i = 0; i < results.size(); ++i) {
 +      if (!MatchesTypedValue(impl(store), hide_val_vec(results)->data[i],
@@ -318,7 +355,7 @@ index d7f43d0c94..dc1e3223a3 100644
  struct wasm_callback_env_t {
    wasm_func_callback_with_env_t callback;
    void* env;
-@@ -3600,6 +3760,34 @@ wasm_func_t* wasm_func_new_with_env(wasm_store_t* store,
+@@ -3600,6 +3773,49 @@ wasm_func_t* wasm_func_new_with_env(wasm_store_t* store,
                                         env2, wasm_callback_env_finalizer));
  }
  
@@ -331,10 +368,10 @@ index d7f43d0c94..dc1e3223a3 100644
 +  return false;
 +}
 +
-+wasm_func_t* wasm_func_new_suspending(wasm_store_t* store,
-+                                      const wasm_functype_t* type,
-+                                      wasm_async_callback_t callback, void* env,
-+                                      void (*finalizer)(void*)) {
++static wasm_func_t* NewSuspendingFunction(
++    wasm_store_t* store, const wasm_functype_t* type,
++    wasm_async_callback_t callback, wasm_async_callback_with_env_t with_env,
++    void* env, void (*finalizer)(void*)) {
 +  auto store_impl = wasm::impl(reveal_store(store));
 +  v8::Isolate::Scope scope(store_impl->isolate());
 +  v8::HandleScope handles(store_impl->isolate());
@@ -344,16 +381,31 @@ index d7f43d0c94..dc1e3223a3 100644
 +    return nullptr;
 +  auto data =
 +      std::make_shared<wasm::FuncData>(store, type, wasm::FuncData::kAsync);
-+  data->async_callback = callback;
++  data->async_callback = {callback, with_env};
 +  data->env = env;
-+  data->finalizer = finalizer;
-+  return release_func(wasm::make_func(store, data));
++  auto function = wasm::make_func(store, data);
++  if (function) data->finalizer = finalizer;
++  return release_func(std::move(function));
++}
++
++wasm_func_t* wasm_func_new_suspending(wasm_store_t* store,
++                                      const wasm_functype_t* type,
++                                      wasm_async_callback_t callback) {
++  return NewSuspendingFunction(store, type, callback, nullptr, nullptr,
++                               nullptr);
++}
++
++wasm_func_t* wasm_func_new_suspending_with_env(
++    wasm_store_t* store, const wasm_functype_t* type,
++    wasm_async_callback_with_env_t callback, void* env,
++    void (*finalizer)(void*)) {
++  return NewSuspendingFunction(store, type, nullptr, callback, env, finalizer);
 +}
 +
  wasm_functype_t* wasm_func_type(const wasm_func_t* func) {
    return release_functype(func->type());
  }
-@@ -3622,6 +3810,451 @@ WASM_API_EXTERN wasm_trap_t* wasm_func_call(const wasm_func_t* func,
+@@ -3622,6 +3838,469 @@ WASM_API_EXTERN wasm_trap_t* wasm_func_call(const wasm_func_t* func,
    return ret;
  }
  
@@ -456,12 +508,6 @@ index d7f43d0c94..dc1e3223a3 100644
 +  auto constructor = context->wasm_suspend_error_function();
 +  return value->v8_object()->map()->prototype() ==
 +         constructor->instance_prototype();
-+}
-+
-+bool wasm_func_belongs_to_store(const wasm_func_t* func,
-+                                const wasm_store_t* store) {
-+  return wasm::impl(reveal_func(func))->store() ==
-+         wasm::impl(reveal_store(store));
 +}
 +
 +extern "C++" {
@@ -686,9 +732,33 @@ index d7f43d0c94..dc1e3223a3 100644
 +            store, "function signature is incompatible with JavaScript"));
 +      return nullptr;
 +    }
-+    target->js_entry.Reset(
-+        store->isolate(),
-+        v8::Utils::ToLocal(vi::NewPromisingWasmFunction(isolate, data)));
++    // The original export traces its promising wrapper, including across C
++    // handle copies. Neither function is rooted by this cache.
++    auto js = store->isolate();
++    auto original = v8::Utils::ToLocal(f->v8_object());
++    auto key = v8::Private::ForApi(
++        js, v8::String::NewFromUtf8Literal(js, "wee8.wasm-c-api.promising"));
++    v8::Local<v8::Value> cached;
++    v8::TryCatch caught(js);
++    if (!original->GetPrivate(store->context(), key).ToLocal(&cached)) {
++      if (error)
++        *error = JspiFailure(store, caught, "cannot read promising wrapper");
++      return nullptr;
++    }
++    v8::Local<v8::Function> entry;
++    if (cached->IsFunction()) {
++      entry = cached.As<v8::Function>();
++    } else {
++      entry = v8::Utils::ToLocal(vi::NewPromisingWasmFunction(isolate, data));
++      if (f->v8_object()->map()->is_extensible() &&
++          !original->SetPrivate(store->context(), key, entry)
++               .FromMaybe(false)) {
++        if (error)
++          *error = JspiFailure(store, caught, "cannot cache promising wrapper");
++        return nullptr;
++      }
++    }
++    target->js_entry.Reset(js, entry);
 +  }
 +  return new wasm_promising_func_t{std::move(target)};
 +}
@@ -805,7 +875,7 @@ index d7f43d0c94..dc1e3223a3 100644
  // Global Instances
  
  WASM_DEFINE_REF(global, wasm::Global)
-@@ -3807,9 +4440,10 @@ const wasm_memory_t* wasm_extern_as_memory_const(
+@@ -3807,9 +4486,10 @@ const wasm_memory_t* wasm_extern_as_memory_const(
  
  WASM_DEFINE_REF(instance, wasm::Instance)
  
@@ -819,7 +889,7 @@ index d7f43d0c94..dc1e3223a3 100644
    wasm::own<wasm::Trap> error;
  
    size_t size = 0;
-@@ -3823,12 +4457,24 @@ WASM_API_EXTERN wasm_instance_t* wasm_instance_new(
+@@ -3823,12 +4503,24 @@ WASM_API_EXTERN wasm_instance_t* wasm_instance_new(
      v8_imports[i] = reveal_extern(imports->data[i]);
    }
  
