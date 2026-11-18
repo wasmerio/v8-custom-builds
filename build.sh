@@ -143,6 +143,13 @@ gn gen out/release --args="is_debug=false \
   target_environment=\"device\" \
   "
 else
+# Do not link PartitionAlloc or its allocator shim. A standalone V8 build
+# defaults to PartitionAlloc as the process's malloc and operator new
+# (Linux/macOS) or operator new (Android), which a static libv8.a imposes on
+# every embedder: without the thread cache that only Chromium/d8 configure,
+# all allocations in the process serialize on one lock, and requests it
+# cannot serve abort instead of returning null. Windows already builds
+# without the shim (build.ps1).
 gn gen out/release --args="is_debug=false \
   v8_symbol_level=0 \
   symbol_level = 0 \
@@ -167,6 +174,10 @@ gn gen out/release --args="is_debug=false \
   v8_deprecation_warnings = false \
   v8_enable_temporal_support = false \
   v8_enable_ecma402_icu4x = false \
+  use_allocator_shim = false \
+  use_partition_alloc_as_malloc = false \
+  enable_backup_ref_ptr_support = false \
+  v8_enable_partition_alloc = false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
@@ -218,6 +229,14 @@ fi
 
 echo "=== Distribution layout ==="
 find "$DIST_DIR" -type f | sort
+
+if nm --defined-only "$DIST_DIR/lib/libv8.a" 2>/dev/null \
+    | grep -Eq ' [TW] _?(malloc|_Znwm)$'; then
+  echo "The V8 archive defines malloc or operator new (allocator shim)" >&2
+  nm --defined-only "$DIST_DIR/lib/libv8.a" 2>/dev/null \
+    | grep -E ' [TW] _?(malloc|free|calloc|_Znwm|_ZdlPv)$' >&2 || true
+  exit 1
+fi
 
 if [ "$OS" = "linux" ] && command -v readelf >/dev/null 2>&1; then
   if readelf -rW "$DIST_DIR/lib/libv8.a" | grep -Eq 'R_X86_64_TPOFF32|R_AARCH64_TLSLE'; then
