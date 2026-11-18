@@ -254,7 +254,7 @@ index 0bbc31c..b83c92d 100644
  // Compiles a wrapper to call a Fast API function from Wasm.
  wasm::WasmCompilationResult CompileWasmJSFastCallWrapper(
 diff --git a/src/wasm/c-api.cc b/src/wasm/c-api.cc
-index 30851c7..9180948 100644
+index 30851c7..631d9be 100644
 --- a/src/wasm/c-api.cc
 +++ b/src/wasm/c-api.cc
 @@ -27,8 +27,8 @@
@@ -395,7 +395,7 @@ index 30851c7..9180948 100644
    int num_result_types = static_cast<int>(result_types.size());
  
    auto params = vec<Val>::make_uninitialized(num_param_types);
-@@ -2093,14 +2154,41 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
+@@ -2093,14 +2154,43 @@ i::Address FuncData::v8_callback(i::Address host_data_foreign,
      size_t ref_index = 0;
      for (int i = 0; i < num_param_types; ++i) {
        if (param_types[i]->is_ref()) {
@@ -410,9 +410,11 @@ index 30851c7..9180948 100644
    own<Trap> trap;
 -  if (self->kind == kCallbackWithEnv) {
 +  if (self->kind == kLoadArguments) {
++    CHECK(call && call->arguments.size() == results.size());
 +    for (size_t i = 0; i < results.size(); ++i)
 +      results[i] = std::move(call->arguments[i]);
 +  } else if (self->kind == kSaveResults) {
++    CHECK(call && call->returned.size() == params.size());
 +    for (size_t i = 0; i < params.size(); ++i)
 +      call->returned[i] = params[i].copy();
 +  } else if (resumed) {
@@ -439,7 +441,7 @@ index 30851c7..9180948 100644
      trap = self->callback_with_env(self->env, params, results);
    } else {
      trap = self->callback(params, results);
-@@ -3626,6 +3714,28 @@ auto wasm_callback(void* env, const wasm::vec<wasm::Val>& args,
+@@ -3626,6 +3716,28 @@ auto wasm_callback(void* env, const wasm::vec<wasm::Val>& args,
    return adopt_trap(f(hide_val_vec(args), hide_val_vec(results)));
  }
  
@@ -468,7 +470,7 @@ index 30851c7..9180948 100644
  struct wasm_callback_env_t {
    wasm_func_callback_with_env_t callback;
    void* env;
-@@ -3663,6 +3773,18 @@ wasm_func_t* wasm_func_new_with_env(wasm_store_t* store,
+@@ -3663,6 +3775,18 @@ wasm_func_t* wasm_func_new_with_env(wasm_store_t* store,
                                         env2, wasm_callback_env_finalizer));
  }
  
@@ -487,7 +489,7 @@ index 30851c7..9180948 100644
  wasm_functype_t* wasm_func_type(const wasm_func_t* func) {
    return release_functype(func->type());
  }
-@@ -3687,11 +3809,6 @@ WASM_API_EXTERN wasm_trap_t* wasm_func_call(const wasm_func_t* func,
+@@ -3687,11 +3811,6 @@ WASM_API_EXTERN wasm_trap_t* wasm_func_call(const wasm_func_t* func,
  
  // JSPI only carries control. Embedders pass typed arguments and results
  // through ordinary Wasm functions, including values without a JS equivalent.
@@ -499,7 +501,19 @@ index 30851c7..9180948 100644
  
  extern "C++" {
  namespace {
-@@ -3874,6 +3991,10 @@ wasm_trap_t* wasm_jspi_start(const wasm_func_t* func, wasm_jspi_call_t** next) {
+@@ -3777,6 +3896,11 @@ void Suspend(const v8::FunctionCallbackInfo<v8::Value>& info) {
+            .ToLocal(&resolver))
+     return;
+   call->continuation.Reset(isolate, resolver);
++  if (call->target) {
++    call->suspended_type =
++        wasm::FuncType::make(wasm::ownvec<wasm::ValType>::make(),
++                             wasm::ownvec<wasm::ValType>::make());
++  }
+   info.GetReturnValue().Set(resolver->GetPromise());
+ }
+ 
+@@ -3874,6 +3998,10 @@ wasm_trap_t* wasm_jspi_start(const wasm_func_t* func, wasm_jspi_call_t** next) {
  wasm_trap_t* wasm_jspi_resume(wasm_jspi_call_t** next) {
    JspiScope scope(*next);
    auto isolate = (*next)->store->isolate();
@@ -510,7 +524,7 @@ index 30851c7..9180948 100644
    if (!CanRunJspiTurn((*next)->store)) {
      return release_trap(JspiError(
          (*next)->store,
-@@ -3893,10 +4014,272 @@ wasm_trap_t* wasm_jspi_resume(wasm_jspi_call_t** next) {
+@@ -3893,10 +4021,279 @@ wasm_trap_t* wasm_jspi_resume(wasm_jspi_call_t** next) {
    return trap;
  }
  
@@ -537,15 +551,22 @@ index 30851c7..9180948 100644
 +               *ref->v8_object())))
 +        return false;
 +    }
-+    copy[i] = reveal_val_vec(source->data)[i].copy();
++    if (types[i]->is_ref()) {
++      copy[i] = wasm::Val::ref(types[i]->kind(),
++                               val.of.ref ? val.of.ref->copy() : nullptr);
++    } else {
++      copy[i] = adopt_val(val);
++    }
 +  }
 +  *dest = std::move(copy);
 +  return true;
 +}
 +
 +void ReturnTypedValues(wasm_jspi_call_t* call, wasm_val_vec_t* out) {
-+  for (size_t i = 0; i < out->size; ++i)
-+    reveal_val_vec(out->data)[i] = std::move(call->returned[i]);
++  for (size_t i = 0; i < out->size; ++i) {
++    wasm_val_delete(&out->data[i]);
++    out->data[i] = release_val(std::move(call->returned[i]));
++  }
 +}
 +
 +// Imports use the compiled Wasm-to-C wrapper, whereas the C function's
@@ -935,10 +956,10 @@ index e52904d..08540ca 100644
    auto* raw_store = reinterpret_cast<wasm_store_t*>(store());
    FunctionSig sig(0, 0, nullptr);
 diff --git a/third_party/wasm-api/wasm.h b/third_party/wasm-api/wasm.h
-index dacd12e..7fa10f0 100644
+index dacd12e..c64880d 100644
 --- a/third_party/wasm-api/wasm.h
 +++ b/third_party/wasm-api/wasm.h
-@@ -472,6 +472,33 @@ WASM_API_EXTERN own wasm_trap_t* wasm_jspi_start(
+@@ -472,6 +472,36 @@ WASM_API_EXTERN own wasm_trap_t* wasm_jspi_start(
  WASM_API_EXTERN own wasm_trap_t* wasm_jspi_resume(own wasm_jspi_call_t** call);
  WASM_API_EXTERN void wasm_jspi_call_delete(own wasm_jspi_call_t* call);
  
@@ -961,7 +982,10 @@ index dacd12e..7fa10f0 100644
 +
 +// Vectors are borrowed for this turn. The caller provides one initialized
 +// result slot per export result. A pending turn leaves those slots untouched.
-+// Resume accepts the suspended import's results or a borrowed trap.
++// A non-null call on success means suspension. NULL means completion.
++// Resume accepts the suspended import's results or a borrowed trap. Invalid
++// inputs and a suppressed checkpoint preserve the pending handle for retry.
++// Delete a pending invocation with wasm_jspi_call_delete to cancel it.
 +WASM_API_EXTERN own wasm_trap_t* wasm_promising_func_call(
 +    const wasm_promising_func_t*, const wasm_val_vec_t* args,
 +    wasm_val_vec_t* results, own wasm_jspi_call_t**);
