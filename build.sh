@@ -10,25 +10,17 @@ DEPOT_TOOLS_DIR="/tmp/depot_tools"
 
 V8_TAG=${V8_TAG:-"15.9.111"}
 
-if [ -z "$1" ]; then 
-  case $(uname -m) in
-	"x86_64")
-	  ARCH="x64"
-      ;;
-	"aarch64"|"arm64")
-	  ARCH="arm64"
-      ;;
-  
-	*)
-	  ARCH=$(uname -m)
-      ;;
-  esac
-else 
-  ARCH=$1
-fi
+HOST_ARCH=$(uname -m)
+HOST_OS=$(uname -s)
+
+ARCH=${1:-$HOST_ARCH}
+case $ARCH in
+  x86_64) ARCH=x64 ;;
+  aarch64) ARCH=arm64 ;;
+esac
 
 if [ -z "$2" ]; then 
-  case $(uname -s) in
+  case $HOST_OS in
 	"Darwin")
 	  OS="mac"
 	  ;;
@@ -36,24 +28,41 @@ if [ -z "$2" ]; then
 	  OS="linux"
 	  ;;
 	*)
-	  OS=$(uname -s)
+	  OS=$HOST_OS
   esac
 else 
   OS=$2
 fi
 
-USE_SYSROOT=false
-USE_CUSTOM_LIBCXX=false
+ARM_TOOLCHAIN_ARGS=""
+FETCH_ARGS=()
 IS_CLANG=false
 if [ "$OS" = "linux" ] || [ "$OS" = "mac" ]; then
   IS_CLANG=true
 fi
 if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
-  # Use Chromium's bundled Clang cross-compiler and Debian sysroots rather
-  # than a native ARM64 system compiler. Bullseye's libstdc++ lacks the
-  # C++20 headers V8 needs, so use bundled libc++ for target and host tools.
-  USE_SYSROOT=true
-  USE_CUSTOM_LIBCXX=true
+  if [ "$HOST_OS" != "Linux" ] || { [ "$HOST_ARCH" != "aarch64" ] && [ "$HOST_ARCH" != "arm64" ]; }; then
+    echo "The Linux ARM64 libstdc++ build requires an AArch64 Linux environment." >&2
+    exit 1
+  fi
+
+  # Use the system libstdc++ ABI so Wasmer can link V8 alongside LLVM.
+  # V8's bundled Linux Clang, metagen libclang, and Rust tools are x86-64 only.
+  if [ -z "${CLANG_BASE_PATH:-}" ]; then
+    CLANG_BIN=$(command -v clang)
+    CLANG_BIN=$(realpath "$CLANG_BIN")
+    CLANG_BASE_PATH=${CLANG_BIN%/bin/*}
+  fi
+  CLANG_VERSION=$("$CLANG_BASE_PATH/bin/clang" -dumpversion)
+  CLANG_VERSION=${CLANG_VERSION%%.*}
+  ARM_TOOLCHAIN_ARGS="
+    clang_base_path = \"$CLANG_BASE_PATH\"
+    clang_version = \"$CLANG_VERSION\"
+    clang_use_chrome_plugins = false
+    enable_rust = false
+    v8_use_metagen = false
+  "
+  FETCH_ARGS=(--nohooks)
 fi
 
 if [ ! -d "$DEPOT_TOOLS_DIR" ]
@@ -68,7 +77,7 @@ export PATH="$PATH:$DEPOT_TOOLS_DIR"
 if [ ! -d v8 ] || [ ! -f .gclient ]
 then
   if [ ! -d v8 ]; then
-    fetch v8
+    fetch "${FETCH_ARGS[@]}" v8
   else
     gclient config --name v8 --unmanaged https://chromium.googlesource.com/v8/v8.git
   fi
@@ -93,15 +102,6 @@ git checkout "$V8_TAG"
 gclient sync --with_branch_heads --with_tags --nohooks
 # Run only the hooks required for building
 python3 build/util/lastchange.py -o build/util/LASTCHANGE
-
-if [ "$OS" = "linux" ] && [ "$ARCH" = "arm64" ]; then
-  # Hooks are disabled above, so install target and host sysroots explicitly.
-  # The host sysroot is needed for build-time tools such as mksnapshot.
-  python3 build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
-  if [ "$(uname -m)" = "x86_64" ]; then
-    python3 build/linux/sysroot_scripts/install-sysroot.py --arch=amd64
-  fi
-fi
 
 for patch in ../patches/*.patch; do 
   git apply "$patch"
@@ -155,9 +155,9 @@ gn gen out/release --args="is_debug=false \
   symbol_level = 0 \
   is_component_build=false \
   is_official_build=false \
-  use_custom_libcxx=$USE_CUSTOM_LIBCXX \
-  use_custom_libcxx_for_host=$USE_CUSTOM_LIBCXX \
-  use_sysroot=$USE_SYSROOT \
+  use_custom_libcxx=false \
+  use_custom_libcxx_for_host=false \
+  use_sysroot=false \
   use_glib=false \
   is_clang=$IS_CLANG \
   v8_expose_symbols=true \
@@ -181,6 +181,7 @@ gn gen out/release --args="is_debug=false \
   target_cpu=\"$ARCH\" \
   v8_target_cpu=\"$ARCH\" \
   target_os=\"$OS\" \
+  $ARM_TOOLCHAIN_ARGS
   "
 fi
 

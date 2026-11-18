@@ -30,14 +30,20 @@
 
 ## Linux AArch64
 
-Cross-compile on an x86-64 Linux host using V8/Chromium's bundled Clang:
+Build in an AArch64 Linux environment with native Clang, LLVM tools,
+compiler-rt, LLD, and a C++20-capable GCC installation for libstdc++.
+Run the build from the repository root.
 
 ```sh
 ./build.sh arm64 linux
 ```
 
-The script installs Chromium's pinned ARM64 and host Debian sysroots and sets
-`target_cpu="arm64"`, `v8_target_cpu="arm64"`, and `use_sysroot=true`.
-It uses Chromium's bundled libc++ for both target code and host tools because
-Bullseye's libstdc++ headers do not provide the C++20 features required by V8.
-No native ARM64 runner, QEMU, or system cross-compiler is required.
+The script also accepts `aarch64` and detects the target when run without
+arguments on AArch64 Linux. Set `CLANG_BASE_PATH` to select a different LLVM
+installation prefix. The packaged headers and archive are written to
+`v8/out/dist`.
+
+CI builds `v8-linux-arm64.tar.xz` on an ARM64 runner in a pinned manylinux
+2.28 container using GCC 12's libstdc++ headers for Ubuntu 22.04 compatibility.
+It links the archive into a shared library with libstdc++ and runs a
+WebAssembly module through the packaged C API before uploading it.
