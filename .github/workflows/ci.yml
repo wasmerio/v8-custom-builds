@@ -13,8 +13,9 @@ jobs:
             os: "ubuntu-22.04"
             native: true
           - id: 'linux-arm64'
-            os: 'ubuntu-22.04'
-            native: false
+            os: 'ubuntu-24.04-arm'
+            native: true
+            container: 'quay.io/pypa/manylinux_2_28_aarch64@sha256:1676a4f178dc6cf8a1d1e3b7e1d71fca891a466ebde72a33880ccda8af3383d8'
           - id: 'darwin-aarch64'
             os: 'macos-15'
             native: true
@@ -37,16 +38,27 @@ jobs:
       fail-fast: false
 
     runs-on: ${{ matrix.target.os }}
+    container: ${{ matrix.target.container }}
     steps:
       - name: Check out the code
         uses: actions/checkout@v6
 
       - name: Install dependencies on Ubuntu
-        if: startsWith(matrix.target.id, 'linux-')
+        if: matrix.target.id == 'linux-amd64'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install ninja-build clang libglib2.0-dev -y
+
+      - name: Install dependencies on manylinux (ARM64)
+        if: matrix.target.id == 'linux-arm64'
+        shell: bash
+        run: |
+          dnf install -y clang compiler-rt llvm lld gcc-toolset-12-gcc-c++ gcc-toolset-12-libatomic-devel
+          # GCC 12's libstdc++ headers match Ubuntu 22.04's runtime ABI.
+          # V8's --target=aarch64-linux-gnu selects a separate Clang config.
+          printf '%s\n' '--gcc-toolchain=/opt/rh/gcc-toolset-12/root/usr' \
+            > /etc/clang/aarch64-unknown-linux-gnu-clang++.cfg
 
       - name: Install dependencies on Ubuntu (android)
         if: startsWith(matrix.target.id, 'android')
@@ -102,11 +114,28 @@ jobs:
         run: |
           ./build.sh 
 
-      - name: Build (Linux ARM64 cross-compile)
+      - name: Test Linux ARM64 archive with libstdc++
         if: matrix.target.id == 'linux-arm64'
         shell: bash
         run: |
-          ./build.sh "arm64" "linux"
+          test_dir=$(mktemp -d)
+          dist_dir=v8/out/dist
+          archive="$dist_dir/lib/libv8.a"
+          llvm-nm --demangle "$archive" > "$test_dir/symbols"
+          # Reject libc++ and the iostream dependency introduced in GCC 13.
+          if grep -m 1 -E 'std::__(1|Cr)::|std::ios_base_library_init\(' "$test_dir/symbols"; then
+            echo "The Linux ARM64 archive contains a symbol outside the supported C++ ABI." >&2
+            exit 1
+          fi
+          gcc -fPIC -I"$dist_dir/include/wasm-c-api" -c tests/wasm-c-api-smoke.c \
+            -o "$test_dir/smoke.o"
+          g++ -shared -Wl,-z,defs "$test_dir/smoke.o" -Wl,--whole-archive "$archive" \
+            -Wl,--no-whole-archive -pthread -ldl -latomic -o "$test_dir/libwee8.so"
+          gcc -x c - -L"$test_dir" -lwee8 -Wl,-rpath,"$test_dir" -o "$test_dir/smoke" <<'EOF'
+          int wasm_c_api_smoke(void);
+          int main(void) { return wasm_c_api_smoke(); }
+          EOF
+          "$test_dir/smoke"
 
       - name: Build (android) 
         if: matrix.target.id == 'android'

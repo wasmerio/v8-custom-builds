@@ -1,0 +1,58 @@
+From: Wasmer Engineering <engineering@wasmer.io>
+Subject: [PATCH] Guard compiler flags unavailable in system Clang
+
+Chromium's pinned Clang supports flags unavailable in Clang 22. Keep
+selective UBSan hardening with system Clang using the supported trap
+flags.
+
+diff --git a/build/config/compiler/BUILD.gn b/build/config/compiler/BUILD.gn
+--- a/build/config/compiler/BUILD.gn
++++ b/build/config/compiler/BUILD.gn
+@@ -594,7 +594,7 @@
+   if (is_clang) {
+     # Flags for diagnostics.
+     cflags += [ "-fcolor-diagnostics" ]
+-    if (!is_wasm) {
++    if (!is_wasm && clang_base_path == default_clang_base_path) {
+       if (!is_win) {
+         cflags += [ "-fdiagnostics-show-inlining-chain" ]
+       } else {
+@@ -635,7 +635,7 @@
+     # The performance improvement does not seem worth the risk. See
+     # https://crbug.com/484082200 for background and https://crrev.com/c/7593035
+     # for discussion.
+-    if (!is_wasm) {
++    if (!is_wasm && clang_base_path == default_clang_base_path) {
+       cflags += [ "-fno-lifetime-dse" ]
+     }
+ 
+diff --git a/build/config/sanitizers/sanitizers.gni b/build/config/sanitizers/sanitizers.gni
+--- a/build/config/sanitizers/sanitizers.gni
++++ b/build/config/sanitizers/sanitizers.gni
+@@ -5,6 +5,7 @@
+ import("//build/config/cast.gni")
+ import("//build/config/chrome_build.gni")
+ import("//build/config/chromeos/args.gni")
++import("//build/config/clang/clang.gni")
+ import("//build/config/profiling/profiling.gni")
+ import("//build/toolchain/toolchain.gni")
+ 
+@@ -534,14 +535,11 @@
+       cflags = [
+         "-fsanitize=${invoker.sanitizer}",
+         "-fsanitize-trap=${invoker.sanitizer}",
+-
+-        # Prevents `__has_feature(undefined_behavior_sanitizer)`
+-        # from evaluating true. Configs defined here are intended to
+-        # be usable even in release builds, i.e. as widely as possible.
+-        # It's important not to have full-on UBSan workarounds activate
+-        # just because we built support for a specific sanitizer.
+-        "-fsanitize-ignore-for-ubsan-feature=${invoker.sanitizer}",
+       ]
++      if (clang_base_path == default_clang_base_path) {
++        # Avoid activating full UBSan workarounds for selective hardening.
++        cflags += [ "-fsanitize-ignore-for-ubsan-feature=${invoker.sanitizer}" ]
++      }
+       if (defined(invoker.cflags)) {
+         cflags += invoker.cflags
+       }
