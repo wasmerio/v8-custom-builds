@@ -191,7 +191,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/wasmerio/wasmer/pulls/7199 --jq '"sha=" + (if .merged then .merge_commit_sha else .head.sha end)' >> "$GITHUB_OUTPUT"
+          gh api repos/wasmerio/wasmer/pulls/7200 --jq '"sha=" + (if .merged then .merge_commit_sha else .head.sha end)' >> "$GITHUB_OUTPUT"
 
   wasmer-jspi:
     name: Wasmer JSPI (${{ matrix.target }})
