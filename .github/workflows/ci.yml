@@ -127,6 +127,18 @@ jobs:
         env: 
           DEPOT_TOOLS_WIN_TOOLCHAIN: 0
 
+      - name: Test JSPI host callbacks and continuation ownership
+        if: matrix.target.id == 'linux-amd64' || matrix.target.id == 'windows-amd64'
+        shell: bash
+        working-directory: v8
+        env:
+          DEPOT_TOOLS_WIN_TOOLCHAIN: 0
+        run: |
+          ./third_party/ninja/ninja -C out/release wasm_api_tests
+          # V8's C API fixture owns the process-wide platform.
+          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.IndependentJspiContinuations
+          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.JspiMissingBuiltins
+
       - name: Zip
         if: matrix.target.id != 'windows-amd64'
         shell: bash
@@ -159,6 +171,52 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 1
+
+  wasmer-jspi:
+    name: Wasmer JSPI (${{ matrix.target }})
+    needs: build
+    # Exercise any available native artifacts even if a cross-build failed.
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            os: ubuntu-22.04
+          - target: windows-amd64
+            os: windows-2022
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: wasmerio/wasmer
+          # Pin the consumer and its JSPI regression tests together (wasmer#7196).
+          ref: c6fd9db5bc34d5ef0596b4b1978258e7015744df
+          persist-credentials: false
+          submodules: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: wee8-package
+      - name: Unpack wee8
+        shell: bash
+        run: |
+          tar -xJf wee8-package/v8.tar.xz -C wee8-package
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev llvm
+      - name: Set up LLVM on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "$env:ProgramFiles\LLVM\bin" >> $env:GITHUB_PATH
+          "LIBCLANG_PATH=$env:ProgramFiles\LLVM\bin" >> $env:GITHUB_ENV
+      - name: Test Wasmer against the built library
+        env:
+          WASMER_WEE8_DIR: ${{ github.workspace }}/wee8-package
+        run: cargo test --locked -p wasmer --no-default-features --features v8-default,experimental-async --test jspi_async --test simple_greenthread
 
   release:
     name: Release
