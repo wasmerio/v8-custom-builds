@@ -18,20 +18,27 @@ static const uint8_t echo_module[] = {
 
 static int visits;
 
+static void count_finalizer(void* env) { ++*(int*)env; }
+
 static wasm_trap_t* echo(const wasm_val_vec_t* args, wasm_val_vec_t* results) {
   ++visits;
   memcpy(&results->data[0], &args->data[0], sizeof(wasm_val_t));
   return NULL;
 }
 
-static wasm_trap_t* ready_echo(void* env, const wasm_val_vec_t* args,
+static wasm_trap_t* ready_echo(const wasm_val_vec_t* args,
                                wasm_val_vec_t* results, bool* pending) {
-  (void)env;
   if (pending) *pending = false;
   return echo(args, results);
 }
 
-enum binding_mode { NATIVE, EXPLICIT_JSPI, IMPLICIT_JSPI };
+static wasm_trap_t* echo_with_env(void* env, const wasm_val_vec_t* args,
+                                  wasm_val_vec_t* results, bool* pending) {
+  assert(*(int*)env == 0);
+  return ready_echo(args, results, pending);
+}
+
+enum binding_mode { NATIVE, EXPLICIT_JSPI, IMPLICIT_JSPI, SUSPENDING_ECHO };
 
 static void check_binding(wasm_store_t* store, wasm_module_t* module,
                           const wasm_extern_vec_t* imports,
@@ -49,19 +56,25 @@ static void check_binding(wasm_store_t* store, wasm_module_t* module,
   wasm_val_vec_t args = WASM_EMPTY_VEC, results = {1, &output};
   visits = 0;
   wasm_trap_t* trap = wasm_func_call(run, &args, &results);
-  assert(!trap && visits == 1);
-  if (mode == NATIVE) assert(output.of.i32 == snan);
+  if (mode == SUSPENDING_ECHO) {
+    assert(trap && wasm_trap_is_suspend_error(trap) && visits == 0);
+    wasm_trap_delete(trap);
+  } else {
+    assert(!trap && visits == 1);
+    if (mode == NATIVE) assert(output.of.i32 == snan);
+  }
 
   wasm_promising_func_t* promising = wasm_func_promising(run, NULL);
   assert(promising);
   wasm_pending_call_t* pending = NULL;
+  visits = 0;
   trap = wasm_promising_func_call(promising, &args, &results, &pending);
   assert(!pending);
   if (mode != NATIVE) {
-    assert(!trap && visits == 2);
+    assert(!trap && visits == 1);
     assert((output.of.i32 & 0x7fffffff) > 0x7f800000);
   } else {
-    assert(trap && visits == 1);
+    assert(trap && visits == 0);
     wasm_trap_delete(trap);
   }
   wasm_promising_func_delete(promising);
@@ -85,16 +98,25 @@ int main(void) {
   wasm_extern_vec_t imports = {2, items};
   check_binding(store, module, &imports, NATIVE);
   check_binding(store, module, &imports, EXPLICIT_JSPI);
-  wasm_func_t* suspending =
-      wasm_func_new_suspending(store, type, ready_echo, NULL, NULL);
+  wasm_func_t* suspending = wasm_func_new_suspending(store, type, ready_echo);
   assert(suspending);
   items[1] = wasm_func_as_extern(suspending);
   check_binding(store, module, &imports, IMPLICIT_JSPI);
+  items[0] = items[1];
+  check_binding(store, module, &imports, SUSPENDING_ECHO);
+  int finalizations = 0;
+  wasm_func_t* with_env = wasm_func_new_suspending_with_env(
+      store, type, echo_with_env, &finalizations, count_finalizer);
+  assert(with_env);
+  items[0] = wasm_func_as_extern(with_env);
+  check_binding(store, module, &imports, SUSPENDING_ECHO);
+  wasm_func_delete(with_env);
   wasm_func_delete(suspending);
   wasm_func_delete(host);
   wasm_functype_delete(type);
   wasm_module_delete(module);
   wasm_byte_vec_delete(&bytes);
   wasm_store_delete(store);
+  assert(finalizations == 1);
   wasm_engine_delete(engine);
 }

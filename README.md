@@ -45,10 +45,10 @@ No native ARM64 runner, QEMU, or system cross-compiler is required.
 ## Typed JSPI example
 
 [The C11 sum example](examples/jspi-sum.c) imports a suspending callback with
-`wasm_func_new_suspending`, instantiates the module with `wasm_instance_new`,
+`wasm_func_new_suspending_with_env`, instantiates the module with `wasm_instance_new`,
 and wraps its `run` export with `wasm_func_promising`. When the host work
 completes, `wasm_pending_call_resume` supplies its result to the suspended guest.
-The program prints `42`.
+The program prints `42`. Use `wasm_func_new_suspending` for callbacks that take no environment. V8 caches the promising wrapper on the guest function object, so distinct C handles for the same export can reuse it.
 
 By default, `wasm_instance_new` binds ordinary C functions using their native
 ABI, preserving floating-point NaN payloads. Supplying a suspending C import
