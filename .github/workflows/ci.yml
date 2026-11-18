@@ -138,6 +138,7 @@ jobs:
           # V8's C API fixture owns the process-wide platform.
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.IndependentJspiContinuations
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.JspiMissingBuiltins
+          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.JspiInvalidImportSlot
 
       - name: Zip
         if: matrix.target.id != 'windows-amd64'
@@ -183,7 +184,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/wasmerio/wasmer/pulls/7196 --jq '"sha=" + (if .merged then .merge_commit_sha else .head.sha end)' >> "$GITHUB_OUTPUT"
+          gh api repos/wasmerio/wasmer/pulls/7197 --jq '"sha=" + (if .merged then .merge_commit_sha else .head.sha end)' >> "$GITHUB_OUTPUT"
 
   wasmer-jspi:
     name: Wasmer JSPI (${{ matrix.target }})
