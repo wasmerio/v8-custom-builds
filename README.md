@@ -50,7 +50,12 @@ and wraps its `run` export with `wasm_func_promising`. When the host work
 completes, `wasm_pending_call_resume` supplies its result to the suspended guest.
 The program prints `42`.
 
-The async C API rejects `v128` parameters and results at either boundary. A guest can still use SIMD across suspension. Promising exports use JavaScript number conversions for floating-point values, which can change NaN payloads.
+The async C API rejects `v128` parameters and results on suspending imports and
+promising exports. A guest can use SIMD and keep a vector live across suspension.
+If a promising export reaches a synchronous C import with a SIMD signature on
+the guest stack, the call traps before the host callback runs. An ordinary
+synchronous call can use the same import. Floating-point values crossing a
+promising export use JavaScript number conversions, which can change NaN payloads.
 
 On Linux, build the example against the unpacked distribution with:
 

@@ -139,6 +139,8 @@ jobs:
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.IndependentJspiContinuations
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingFunctionOwnsEachInvocation
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingScalarResults
+          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.SimdHostImportFromPromisingExport
+          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.SynchronousFloatImportPreservesNanPayloads
 
       - name: Run the C11 JSPI example
         if: matrix.target.id == 'linux-amd64'
