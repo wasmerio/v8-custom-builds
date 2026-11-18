@@ -140,6 +140,7 @@ jobs:
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.JspiMissingBuiltins
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.JspiInvalidImportSlot
           ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingFunctionOwnsEachInvocation
+          ./out/release/wasm_api_tests --gtest_filter=WasmCapiTest.PromisingScalarAndBitExactResults
 
       - name: Run the C11 JSPI example
         if: matrix.target.id == 'linux-amd64'
